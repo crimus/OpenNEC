@@ -810,6 +810,7 @@ void interpolate_sommerfeld_grid(context_t *restrict ctx, double x, double y, co
 void romberg_integrate_wire_e(context_t *ctx, double el1, double el2, double b,
           int ij, double *sgr, double *sgi)
 {
+  printf("In romberg_integrate_wire_e\n");
   int ns, nt;
   int nx = 1, nma = 65536, nts = 4;
   bool flag = true;
