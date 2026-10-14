@@ -1,5 +1,7 @@
 Items still to be implemented:
 
+* add some simple way to add an RP or similar card so you can run 4nec2 without modifying the deck
+
 * sectionize the deck based on NX cards
 
 * there are some additional logic around GN/GD and RP that we do not currently test correctly

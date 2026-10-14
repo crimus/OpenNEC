@@ -87,6 +87,15 @@ int write_deck_nec4(const deck_t *deck, FILE *file)
         if (is_comment(card)) {
             /* card_code is always non-null (fixed-size array); only test first char */
     if (card->card_code[0] == 'C') {
+                // If this is the CE card and deck has an explicit file type, add type identifier
+                if (strcmp(card->card_code, "CE") == 0 && deck->file_type != FILE_TYPE_UNKNOWN)
+                {
+                    // Write blank CM line
+                    fprintf(file, "CM\n");
+                    // Write type identifier (always NEC-4 when using this writer)
+                    fprintf(file, "CM engine: NEC-4\n");
+                }
+                
                 fprintf(file, "%s", card->card_code);
                 fputs(card->comment, file);
                 fputc('\n', file);

@@ -41,10 +41,117 @@ static void parse_comment_card(context_t *ctx, card_t *card, errors_list_t *erro
 static void parse_geometry_or_control_card(context_t *ctx, card_t *card, errors_list_t *errors);
 static void parse_onec_card(context_t *ctx, card_t *card, errors_list_t *errors);
 static void parse_key_values(context_t *ctx, card_t *card, errors_list_t *errors);
+static void detect_file_type(deck_t *deck);
 
 /* Module-level variables for line ending detection */
 static int line_ending_crlf_count = 0;
 static int line_ending_lf_count = 0;
+
+/******************************************************************************
+ * detect_file_type()
+ *
+ * Scans comments at the top of the deck for type indicators such as:
+ * - CM engine=type
+ * - CM dialect=type
+ *
+ * The type is case-insensitive and may contain hyphens (e.g., "NEC-2", "4nec2").
+ * NEC4 may also be specified as "4.2", etc.
+ *
+ * Sets deck->file_type to the appropriate file_type_t enum value based on
+ * what is found, or FILE_TYPE_UNKNOWN if no type is detected.
+ *
+ * @param deck deck_t structure to scan and update
+ */
+static void detect_file_type(deck_t *deck)
+{
+  // Initialize to unknown
+  deck->file_type = FILE_TYPE_UNKNOWN;
+  
+  // Only look in the comment section at the top of the deck
+  if (deck->comment_start < 0 || deck->comment_end < 0) {
+    return;
+  }
+  
+  // Scan through comment cards
+  for (int i = deck->comment_start; i <= deck->comment_end && i < deck->num_cards; i++) {
+    card_t *card = &deck->cards[i];
+    if (!card->orig_str) continue;
+    
+    // Work with a copy to avoid modifying the original
+    char line_copy[MAX_LINE_LEN];
+    strncpy(line_copy, card->orig_str, MAX_LINE_LEN - 1);
+    line_copy[MAX_LINE_LEN - 1] = '\0';
+    
+    // Convert to uppercase for case-insensitive matching
+    for (int j = 0; line_copy[j]; j++) {
+      line_copy[j] = toupper((unsigned char)line_copy[j]);
+    }
+    
+    // Look for patterns: CM ENGINE=TYPE or CM DIALECT=TYPE
+    // These patterns can have optional colons, equal signs, and spaces
+    char *type_str = NULL;
+    
+    if (strstr(line_copy, "CM ENGINE") != NULL) {
+      type_str = strstr(line_copy, "CM ENGINE");
+      type_str += 9; // skip "CM ENGINE"
+      // Skip optional whitespace, colon, and equals sign
+      while (*type_str && (isspace((unsigned char)*type_str) || *type_str == '=' || *type_str == ':')) {
+        type_str++;
+      }
+    } else if (strstr(line_copy, "CM DIALECT") != NULL) {
+      type_str = strstr(line_copy, "CM DIALECT");
+      type_str += 10; // skip "CM DIALECT"
+      // Skip optional whitespace, colon, and equals sign
+      while (*type_str && (isspace((unsigned char)*type_str) || *type_str == '=' || *type_str == ':')) {
+        type_str++;
+      }
+    } else {
+      continue;
+    }
+    
+    // Skip leading whitespace
+    while (*type_str && isspace((unsigned char)*type_str)) {
+      type_str++;
+    }
+    
+    // Extract the type value into a buffer, stopping at whitespace or end of string
+    char type_value[64];
+    int j = 0;
+    while (*type_str && !isspace((unsigned char)*type_str) && j < 63) {
+      type_value[j++] = *type_str++;
+    }
+    type_value[j] = '\0';
+    
+    if (strlen(type_value) == 0) {
+      continue;
+    }
+    
+    // Match the type string (case-insensitive) to file_type_t values
+    if (strcasecmp(type_value, "NEC-2") == 0 || strcasecmp(type_value, "NEC2") == 0) {
+      deck->file_type = FILE_TYPE_NEC2;
+      return;
+    } else if (strcasecmp(type_value, "4NEC2") == 0) {
+      deck->file_type = FILE_TYPE_4NEC2;
+      return;
+    } else if (strcasecmp(type_value, "NEC-3") == 0 || strcasecmp(type_value, "NEC3") == 0) {
+      deck->file_type = FILE_TYPE_NEC3;
+      return;
+    } else if (strcasecmp(type_value, "NEC-4") == 0 || strcasecmp(type_value, "NEC4") == 0 ||
+               strcasecmp(type_value, "4.2") == 0) {
+      deck->file_type = FILE_TYPE_NEC4;
+      return;
+    } else if (strcasecmp(type_value, "NEC-5") == 0 || strcasecmp(type_value, "NEC5") == 0) {
+      deck->file_type = FILE_TYPE_NEC5;
+      return;
+    }
+  }
+
+  // If still unknown but the deck has SY (symbol) cards, it must be 4nec2
+  // because that's the only NEC variant that supports symbol cards
+  if (deck->file_type == FILE_TYPE_UNKNOWN && deck->symbol_start >= 0) {
+    deck->file_type = FILE_TYPE_4NEC2;
+  }
+}
 
 /******************************************************************************
  * read_deck()
@@ -718,6 +825,9 @@ void parse_deck(context_t *ctx, deck_t *deck, errors_list_t *errors)
 
    // add invisible=true for geometry cards with tag >9000, from 4nec2
   mark_4nec2_cards_invisible(ctx, deck);
+
+  // detect NEC variant from comments at the top of the deck
+  detect_file_type(deck);
 } /* end of parse_deck() */
 
 /******************************************************************************

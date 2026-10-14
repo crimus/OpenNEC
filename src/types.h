@@ -147,6 +147,19 @@ typedef struct key_value_t
 } key_value_t;
 
 /**
+ * @enum file_type_t
+ * @brief Identifies the NEC variant file format of a deck.
+ */
+typedef enum {
+  FILE_TYPE_UNKNOWN = 0, /**< Unknown or unidentified format */
+  FILE_TYPE_NEC2 = 1,    /**< NEC-2 format */
+  FILE_TYPE_4NEC2 = 2,   /**< 4nec2 format */
+  FILE_TYPE_NEC3 = 3,    /**< NEC-3 format */
+  FILE_TYPE_NEC4 = 4,    /**< NEC-4 format */
+  FILE_TYPE_NEC5 = 5,    /**< NEC-5 format */
+} file_type_t;
+
+/**
  * @enum field_sep_t
  * @brief Describes the field separator style used in a card's raw input.
  *
@@ -231,6 +244,7 @@ typedef struct deck_t
   int num_symbols;    /**< Total number of symbols */
   field_sep_t field_sep; /**< Separator style shared by all geo/control cards, or FSEP_UNKNOWN if mixed */
   int line_endings; /**< Line ending style detected in input deck: LINE_ENDING_LF, LINE_ENDING_CRLF, or LINE_ENDING_UNDETERMINED */
+  file_type_t file_type; /**< NEC file format variant (default FILE_TYPE_UNKNOWN) */
 } deck_t;
 
 /** @brief Opaque handle to the internal simulation state. 

@@ -56,16 +56,27 @@ int write_deck_nec2(const deck_t *deck, FILE *file)
             (strcmp(card->card_code, "CM") == 0 ||
              strcmp(card->card_code, "CE") == 0))
         {
+            // If this is the CE card and deck has an explicit file type, add type identifier
+            if (strcmp(card->card_code, "CE") == 0 && deck->file_type != FILE_TYPE_UNKNOWN)
+            {
+                // Write blank CM line
+                fprintf(file, "CM\n");
+                // Write type identifier (always NEC-2 when using this writer)
+                fprintf(file, "CM engine: NEC-2\n");
+            }
+            
             fprintf(file, "%s%s", deck->cards[i].card_code,
                     deck->cards[i].comment);
             fputc('\n', file);
+            continue;
         }
         // for comment cards with other headers, only export if the option is on
-        if (is_comment(card))
+        else if (is_comment(card))
         {
             fprintf(file, "%s%s", deck->cards[i].card_code,
                     deck->cards[i].comment);
             fputc('\n', file);
+            continue;
         }
 
         // for geometry and command cards, start with the code

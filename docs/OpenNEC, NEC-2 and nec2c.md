@@ -29,12 +29,12 @@ Changes from nec2c
 - nec2c changed the output format of the reports in the .out files, which caused it to be incompatible with many GUI programs, but others used the new format instead.
 - onec can generate both the original NEC-2 format and the new nec2c format reports, and should work with any program (see the --format switch).
 
-- onec also fixes a number of bugs in nec2c, including known issues in the somnec calculations.
-
 Other basic changes
 -------------------
 
 - onec fixes a notorious bug in the geometry system that caused NEC to go into an infinite loop when segments were connected improperly. The program exits gracefully in this case, with a clear error message.
+
+- onec also fixes a number of bugs in nec2c, including known issues in the somnec calculations.
 
 - onec adds a generic extension system that allows arbitrary data to be stored in cards in a compatible fashion. See the [OpenNEC file format](OpenNEC%20file%20format.md) document for details.
 

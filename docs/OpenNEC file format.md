@@ -180,7 +180,15 @@ NOTE: formula names are case insensitive, p and P refer to the same variable, as
 
 If more than one definition is supplied on a single line, they are comma separated. onec variables may be "hidden" by adding an onec comment marker to the front. Hiding of this sort, if present, should be preserved when the file is written.
 
-onec variable cards can be placed anywhere in the file as long as they appear before the cards that reference them. *Generally* they will be placed between the comment and geometry cards, but this is not a requirement. 
+onec variable cards can be placed anywhere in the file as long as they appear before the cards that reference them. *Generally* they will be placed between the comment and geometry cards, but this is not a requirement.
+
+### engine definition
+
+One special type of onec comment exists, the file type indicator. This is in the form of a variable definition found inside the comments at the top of the file, typically the last line before the CE. It indicates the file as being NEC-2, 4nec2, NEC-4 (and NEC-4.2) or NEC-5 format, using the "engine" variable. For instance, `CM engine:NEC-5` indicates the file is designed to be used with the NEC-5 engine. "dialect" is a synonym for "engine", either may be used and both are recognized.
+
+This definition is optional, and if none is found in the file it will attempt to determine a type based on an internal heuristic by looking for certain other cards. For instance, if there is no engine definition but there are `SY` cards, the deck will be set to the 4nec2 type. If none of these tests can determine the type, it is left as type 0, "unknown".
+
+All of the exporters add this line if a type has been set.
 
 ### geometry area
 

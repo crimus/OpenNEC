@@ -188,6 +188,28 @@ void write_deck_onec(const context_t *ctx, const deck_t *deck, FILE *file)
     // comment cards are easy
     if (is_comment(card))
     {
+      // If this is the CE card and we have an explicit file type, add the type identifier BEFORE it
+      if (strcmp(card->card_code, "CE") == 0 && deck->file_type != FILE_TYPE_UNKNOWN)
+      {
+        const char *type_name = NULL;
+        switch (deck->file_type) {
+          case FILE_TYPE_NEC2: type_name = "NEC-2"; break;
+          case FILE_TYPE_4NEC2: type_name = "4nec2"; break;
+          case FILE_TYPE_NEC3: type_name = "NEC-3"; break;
+          case FILE_TYPE_NEC4: type_name = "NEC-4"; break;
+          case FILE_TYPE_NEC5: type_name = "NEC-5"; break;
+          default: type_name = NULL; break;
+        }
+        
+        if (type_name != NULL)
+        {
+          // Write blank CM line
+          fputs("CM\n", file);
+          // Write type identifier as CM card
+          fprintf(file, "CM engine: %s\n", type_name);
+        }
+      }
+      
       // Special case: blank lines are marked with code="!" and empty comment.
       // Output them as actual blank lines, not as "!" markers.
       if (strcmp(card->card_code, "!") == 0 && 
@@ -1495,6 +1517,47 @@ static void write_header(const context_t *ctx, const deck_t *deck, FILE *file)
       else
       {
         fprintf(file, "                              %s\n", card->comment);
+      }
+    }
+  }
+
+  // Add file type identifier if explicitly set (not UNKNOWN)
+  if (deck->file_type != FILE_TYPE_UNKNOWN)
+  {
+    const char *type_name = NULL;
+    switch (deck->file_type) {
+      case FILE_TYPE_NEC2: type_name = "NEC-2"; break;
+      case FILE_TYPE_4NEC2: type_name = "4nec2"; break;
+      case FILE_TYPE_NEC3: type_name = "NEC-3"; break;
+      case FILE_TYPE_NEC4: type_name = "NEC-4"; break;
+      case FILE_TYPE_NEC5: type_name = "NEC-5"; break;
+      default: type_name = NULL; break;
+    }
+    
+    if (type_name != NULL)
+    {
+      // Write blank CM line
+      if (ctx->output_format == OUTPUT_FORMAT_ORIGINAL)
+      {
+        fprintf(file, "%-101s\n", "");
+      }
+      else
+      {
+        fprintf(file, "                              CM\n");
+      }
+      
+      // Write type identifier as CM card
+      char type_line[256];
+      snprintf(type_line, sizeof(type_line), "CM engine: %s", type_name);
+      if (ctx->output_format == OUTPUT_FORMAT_ORIGINAL)
+      {
+        char comment_line[102];
+        snprintf(comment_line, sizeof(comment_line), "                          %-75s", type_line + 3);
+        fprintf(file, "%s\n", comment_line);
+      }
+      else
+      {
+        fprintf(file, "                              %s\n", type_line);
       }
     }
   }
