@@ -1,5 +1,10 @@
 OpenNEC version history
 
+Version 2.3.1b - 2026 October 20
+- fix for the improper scaling applied to LD 7 cards (Issue #24)
+- fix for simultaneous multi-source EX card processing (Issue #25)
+- added "type" to deck_t to track the type, NEC2, NEC4, NEC5 or 4nec2
+
 Version 2.3.0b - 2026 July 24
 - EXPERIMENTAL!
 - more changes in the nec2c reporting chain, but problems persist

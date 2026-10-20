@@ -490,8 +490,13 @@ int apply_impedance_loading(context_t *ctx, int *ldtyp, int *ldtag, int *ldtagf,
           double r    = ctx->geometry.radius[i] * ctx->geometry.wavelength; /* wire radius, metres */
           double ratio = R / r;
           double L_pm = 2.0e-7 * pow(eps * ratio, 1.0/12.0) * (1.0 - 1.0/eps) * log(ratio);
-          /* series distributed impedance per half-length: jω·L_pm·(2·half_len) / (2·half_len) = jω·L_pm */
-          zt = tpcj * ctx->geometry.half_len[i] * L_pm / ctx->geometry.wavelength;
+          
+          // NOTE: earlier versions used this:
+          // zt = tpcj * ctx->geometry.half_len[i] * L_pm / ctx->geometry.wavelength;
+          // ... which was scaling L_pm by (half_len / wavelength).
+          // in retrospect where this came from is a mystery and removing it produces
+          // expected results. See issue #24 in GitHub.
+          zt = tpcj * L_pm;
           break;
         }
 
