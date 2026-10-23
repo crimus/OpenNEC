@@ -51,7 +51,7 @@ To return to the original Fortran-based engines:
 
 The original engines remain intact and can be selected anytime. You can also simply delete `onec.exe` from the `exe` folder if you no longer need it.
 
-How 4nec2 Invokes NEC Engines
+How 4nec2 invokes NEC engines
 =============================
 
 The original Fortran code, which ships with the 4nec2 install, is an interactive program which prompts the user for filenames for the input and output files. To drive these programs in an automated fashion, 4nec2 writes the input file to disk with the `.inp` extension and has the Fortran code write the results to a file with the `.out` extension. It then reads the `.out` file and parses it to get the results.
@@ -78,7 +78,23 @@ So the overall control flow is:
 
 3. **Output Handling**: The engine writes results to the `.out` file, which 4nec2 captures for display
 
-### OpenNEC Compatibility
+Default RP addition
+===================
+
+Many antenna models in 4nec2 don't include explicit radiation pattern (RP) requests in their NEC decks. This is because the 4nec2 GUI (normally) adds one to the .inp file when it's being written out. These RP's (or NH or NE) cards are not added to the .nec deck that 4nec2 saves out, they are only added on-the-fly during processing of the .inp.
+
+So if you download a deck that was created in 4nec2, it probably doesn't contain any reporting cards. This doesn't break anything in OpenNEC, the deck will run fine, but when you look at the .out report it might seem "odd" to someone expecting a complete report like the .out files that 4nec2 would generate in this case. 
+
+To help out in this situation, and especially when batch-running multiple files that may include 4nec2 decks, OpenNEC provides the `--add-rp` (short form `-a`) option to automatically inject a default RP if there are no reporting cards in the deck. This generates a horizontal pattern (slice at 90° elevation) with 1° azimuth resolution, covering the full 360° azimuth range.
+
+If the deck already has reporting cards in it, this option does nothing. This means it's safe to use with "real" NEC-2 decks which will almost always include one of these cards, 4nec2 with explicit reporting (which is not *that* uncommon), as well as 4nec2 decks lacking the reports. A mixed collection of such files will produce useful output for all of these cases.
+
+NOTE: this issue only comes up if you're running the file in OpenNEC "by hand" in the terminal or some other program, if you're using it *within* 4nec2, as this document describes, then it will be handed the .inp file that 4nec2 built, and that file *will* have the RP in it.
+
+Technical Considerations
+========================
+
+### OpenNEC compatibility with nec2d
 
 When invoked with no arguments on Windows, OpenNEC prints the same prompts as the original Fortran engines:
 - `ENTER NAME OF INPUT FILE >`
@@ -86,10 +102,7 @@ When invoked with no arguments on Windows, OpenNEC prints the same prompts as th
 
 This ensures complete compatibility with systems that might expect these prompts.
 
-Technical Considerations
-========================
-
-### Input Format Compatibility
+### Input Format
 
 OpenNEC reads standard NEC-2 format from stdin, the same format 4nec2 generates in `nec2d.tmp` and `som2d.tmp` files. No conversion is needed.
 

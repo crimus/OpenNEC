@@ -95,11 +95,12 @@ Command-line options include:
 `-e`, `--error-file` <path>: write errors/logs to a file instead of `stderr`  
 `-g`, `--greens` <file>: write Greens function output to the given file (or default .ngf)  
 `-w`, `--write-file` <file>: writes the deck out to the named file type (see below)  
+`-a`, `--add-rp`: automatically add a default RP if the deck ends without any output. Used with 4nec2 decks.  
 `-f`, `--format`: select the format for the generated `.out` file. Valid values are `nec2c` or `original` (default on all platforms).  
 `--line-ending`: override the line ending style for output files. Valid values are `lf` (default on Unix/macOS) or `crlf` (default on Windows).  
 `--skip-large`: when running multiple decks, skip those with estimated complexity T >= 1e11  
 
-Short options with no parameters can be ganged, for instance, `-nt`.
+Short options with no parameters can be ganged, for instance, `-nt` or `-nta`.
 
 ### On the PC
 

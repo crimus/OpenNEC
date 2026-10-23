@@ -283,6 +283,28 @@ onec -j 8 -r /antenna/collection/
 
 This option is ignored when processing a single file. The optimal value depends on your CPU core count and available memory.
 
+**`-a`, `--add-rp`**
+One of the goals for OpenNEC is to run 4nec2 decks without modification. However, 4nec2 modifies decks at runtime in order to make them work in NEC-2.
+
+Among these modifications is the addition of reporting cards like RP, NE, or NH, depending on what the user selects when running a calculation. Since these are not saved into the original 4nec2 deck the user saves from the GUI, decks downloaded from the 'net will often have no output.
+
+To produce something useful, the `-a` flag can be turned on when using 4nec2 decks. If the reporting engine reaches the end of the deck and it has not seen an RP, NE, or NH, it will pretend there was an RP at the end. This produces some useful output without having to modify the original deck.
+
+The RP is a single horizontal slice at 90 degrees (flat) with samples every 1 degree for the entire 360 degrees. There is no obvious "default" pattern, so this one was selected as it gives you reasonable estimages for gain in the most common use-cases, and you can get the beamwidth at a glance.
+
+Note that this option looks for existing reporting cards first, so if they are already in the deck this option will be skipped. This means you can safely turn it on for almost any deck.
+
+```bash
+# Add default pattern if missing
+onec --add-rp antenna.nec
+
+# Or use short form
+onec -a antenna.nec
+
+# Combine with other options
+onec -a -f nec2c antenna.nec
+```
+
 ### File Format Conversion
 
 **`-w FILE`, `--write-file=FILE`**  

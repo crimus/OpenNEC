@@ -76,11 +76,13 @@ Many of the alternative calculation engines available are modified versions of t
 
 4nec2 uses external engines to perform the calculations. The 4nec2 package comes with several compiled versions of the original Fortran code, each changing the number of segments it can support with the tradeoff that the "larger" versions require more memory to run. This was an important feature at the time 4nec2 was first written, although today any machine can run the largest models and the "smaller" versions offer little utility.
 
-The current nec2d-XS versions are further modified to add the eXtended Sommerfeld (XS) option that allows users to compute more accurate near-field results in certain scenarios by using a more rigorous treatment of the ground plane effects. These modifications are also supported in OpenNEC.
+The current nec2d-XS versions are further modified to add the eXtended Sommerfeld (XS) option that allows users to compute more accurate near-field results in certain scenarios by using a more rigorous treatment of the ground plane effects.
 
 The nec2d-XS source code can be found here:
 
 https://www.qsl.net/4nec2/supfiles.htm
+
+OpenNEC merges the functionality in nec2d-XS (including the Sommerfeld calculations) combined with the extra functionality provided by the 4nec2 GUI. See [Using OpenNEC with 4nec2](Using%20OpenNEC%20with%204nec2.,md) for additional details.
 
 ### NEC2/MP
 
@@ -88,32 +90,28 @@ NEC2/MP was a version of the original code that was re-written to run on multi-p
 
 https://web.archive.org/web/20130502013310/http://users.otenet.gr/~jmsp/
 
+OpenNEC supports MP in in both the calculation and building the matrix, and runs faster than this version.
+
 ### NEC2
 
-This (somewhat confusingly named) package is an updated version of the original Fortran code by Ulrich Steinmann so it works better on Unix:
+This (somewhat confusingly named) package is an updated version of the original Fortran code by Ulrich Steinmann so it works better on Unix. The changes are mostly related to supporting input/output redirection to make it easier to use in Unix workflows:
 
 https://github.com/yeti01/nec2
 
+OpenNEC includes all of the same functionality, although there are differences in the command line switches that support additional features.
+
 ### aegnec2
 
-aegnec2 is a version of the original Fortran code that has been broken out into smaller, more managable files. It also adds a manually-controlled memory allocation feature, which allows a single binary to support different sizes of models, whereas earlier Fortran codes were generally supplied in multiple versions with different hard-coded segment limits (as is the case in nec2d/4nec2). For instance, one can run aegnec2 with the `-s` flag set to 4000 in order to allow it to support models with up to 4000 segments. This sort of allocation is automatic in OpenNEC, which can efficiently run very small to very large models without any changes.
-
-The aegnec2 home page can be found here:
+aegnec2 is a version of the original Fortran code that has been broken out into smaller, more managable files. It also adds a manually-controlled memory allocation feature, which allows a single binary to support different sizes of models, whereas earlier Fortran codes were generally supplied in multiple versions with different hard-coded segment limits (as is the case in nec2d/4nec2). For instance, one can run aegnec2 with the `-s` flag set to 4000 in order to allow it to support models with up to 4000 segments. The aegnec2 home page can be found here:
 
 https://github.com/flintoftid/aegnec2
+
+This sort of allocation is automatic in OpenNEC, which can efficiently run very small to very large models without any changes.
 
 C-based
 -------
 
 While nec2c was the best known C-language port of the original code, several others have appeared since it was released:
-
-### xnec2c
-
-xnec2c is an X-Windows based GUI modelling program that runs on top of nec2c. For use in xnec2c, Kyriazis further modified the original nec2c code to include multi-threaded capabilities and support for math libraries like BLAS. These changes were not used in OpenNEC, which was based on the original nec2c, not xnec2c. The xnec2c project appears to be moribund.
-
-The xnec2c code can be found here:
-
-https://github.com/KJ7LNW/xnec2c
 
 ### nec2++
 
@@ -126,6 +124,17 @@ OpenNEC also expands the system in several ways that nec2++ didn't, including me
 The nec2++ code can be found here:
 
 https://github.com/tmolteno/necpp
+
+### xnec2c
+
+xnec2c is an X-Windows based GUI modelling program that runs on top of nec2c. For use in xnec2c, Kyriazis further modified the original nec2c code to include multi-threaded capabilities and support for math libraries like BLAS. The xnec2c project appears to be moribund. The xnec2c code can be found here:
+
+https://github.com/KJ7LNW/xnec2c
+
+OpenNEC added these features as well, but did not use any of the code from xnec2c, these were added independantly.
+
+???
+---
 
 ### The *other* OpenNEC
 

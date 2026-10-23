@@ -77,6 +77,7 @@ void init_card_state(card_state_t *state)
     /* Pattern tracking */
     state->last_processed_pattern_idx = -1;
     state->num_rp_cards = 0;
+    state->seen_output_card = false;  /* Track if we've seen an output card (RP/NE/NH) */
     state->last_freq_output_mhz = -999.0;  /* Initialize to impossible frequency */
 }
 
@@ -103,6 +104,94 @@ void free_card_state(card_state_t *state)
     state->patch_y_saved = NULL;
     state->patch_z_saved = NULL;
     state->patch_area_saved = NULL;
+}
+
+/**
+ * @brief Create and process a synthetic default RP card.
+ *
+ * Creates a default RP card that generates a horizontal radiation pattern
+ * (phi from 0-360 degrees, theta at 90 degrees) with one degree resolution.
+ * This is called when --add-rp flag is set and we reach EN without seeing
+ * an RP, NE, or NH card.
+ *
+ * @param ctx The context
+ * @param deck The deck
+ * @param state The card state
+ * @return 0 on success, -1 on error
+ */
+static int process_synthetic_rp_card(context_t *ctx, deck_t *deck, int card_idx,
+                                      card_state_t *state)
+{
+    if (!ctx || !deck || !state) return -1;
+
+    /* Create a synthetic card_t structure for the default RP pattern
+     * RP card parameters:
+     * I1 = 0 (far field type: 0 = free space)
+     * I2 = 91 (nthi = number of theta angles: 91 = 0 to 90 by 1)
+     * I3 = 360 (nphi = number of phi angles: 360 = 0 to 359 by 1)
+     * I4 = 0 (output format)
+     * F1 = 90.0 (theta start at 90 degrees - horizontal plane)
+     * F2 = 0.0 (phi start at 0 degrees)
+     * F3 = -1.0 (theta step: negative means use I2 equally spaced angles)
+     * F4 = 1.0 (phi step: 1 degree)
+     * F5 = 0.0 (radial distance - default)
+     * F6 = 0.0 (gain normalization - default)
+     */
+
+    /* Temporarily create a synthetic RP card */
+    card_t synthetic_rp;
+    memset(&synthetic_rp, 0, sizeof(card_t));
+    strncpy(synthetic_rp.card_code, "RP", sizeof(synthetic_rp.card_code) - 1);
+    synthetic_rp.i[1] = 0;     /* far_field_type */
+    synthetic_rp.i[2] = 1;     /* nthi - single theta at 90 degrees */
+    synthetic_rp.i[3] = 360;   /* nphi - 360 phi angles for full circle */
+    synthetic_rp.i[4] = 0;     /* output format */
+    synthetic_rp.f[1] = 90.0;  /* theta start */
+    synthetic_rp.f[2] = 0.0;   /* phi start */
+    synthetic_rp.f[3] = 0.0;   /* theta step (not used with nthi=1) */
+    synthetic_rp.f[4] = 1.0;   /* phi step */
+    synthetic_rp.f[5] = 0.0;   /* radial distance */
+    synthetic_rp.f[6] = 0.0;   /* gain normalization */
+
+    /* Mark that we've seen an output card */
+    state->seen_output_card = true;
+    
+    /* We need to manually handle the RP processing since we don't have a real card index */
+    state->card_sequence_state = 7;  /* Mark that we're in pattern collection */
+    state->num_rp_cards = 0;         /* Reset RP card collection */
+
+    /* Store the synthetic RP parameters */
+    if (state->num_rp_cards < MAX_RP_CARDS_PER_FREQUENCY) {
+        state->rp_cards[state->num_rp_cards].num_theta = synthetic_rp.i[2];
+        state->rp_cards[state->num_rp_cards].num_phi = synthetic_rp.i[3];
+        state->rp_cards[state->num_rp_cards].theta_start = synthetic_rp.f[1];
+        state->rp_cards[state->num_rp_cards].phi_start = synthetic_rp.f[2];
+        state->rp_cards[state->num_rp_cards].theta_step = synthetic_rp.f[3];
+        state->rp_cards[state->num_rp_cards].phi_step = synthetic_rp.f[4];
+        state->num_rp_cards++;
+    }
+
+    /* Set the far field type if not already set */
+    if (ctx->gnd.far_field_type == -1) {
+        ctx->gnd.far_field_type = synthetic_rp.i[1];
+    }
+
+    /* Output the synthetic RP card as a DATA CARD */
+    if (ctx->output_fp) {
+        state->total_cards_processed++;
+        fprintf(ctx->output_fp,
+            "  DATA CARD No: %3d "
+            "RP %3d %5d %5d %5d %12.5E %12.5E %12.5E %12.5E %12.5E %12.5E\n",
+            state->total_cards_processed,
+            synthetic_rp.i[1], synthetic_rp.i[2], synthetic_rp.i[3], synthetic_rp.i[4],
+            synthetic_rp.f[1], synthetic_rp.f[2], synthetic_rp.f[3],
+            synthetic_rp.f[4], synthetic_rp.f[5], synthetic_rp.f[6]);
+    }
+
+    /* Execute the frequency loop with this synthetic RP */
+    int result = execute_frequency_loop_sequential(ctx, deck, card_idx, state);
+    if (result == 0) state->card_sequence_state = 10;
+    return result;
 }
 
 /* ============================================================================
@@ -272,7 +361,8 @@ int process_deck_sequential(context_t *ctx, deck_t *deck)
     
     /* Start processing cards after geometry section */
     int start_idx = (deck->geometry_end >= 0) ? deck->geometry_end + 1 : 0;
-    int end_idx = (deck->deck_end >= 0) ? deck->deck_end : deck->num_cards;
+    /* Use num_cards to include the EN card, which is at deck_end index */
+    int end_idx = deck->num_cards;
     
     if (start_idx >= end_idx) {
         /* No control cards to process */
@@ -302,16 +392,25 @@ int process_deck_sequential(context_t *ctx, deck_t *deck)
             continue;
         }
         
+        /* Check for EN (end of deck) card - process default RP if needed before EN */
+        if (strcmp(card->card_code, "EN") == 0) {
+            /* If --add-rp flag is set and we haven't seen an output card yet,
+             * inject a synthetic default RP before processing EN */
+            if (ctx->add_rp_if_missing && !state.seen_output_card) {
+                int result = process_synthetic_rp_card(ctx, deck, i, &state);
+                if (result != 0) {
+                    free_card_state(&state);
+                    return result;
+                }
+            }
+            break;
+        }
+        
         /* Dispatch to card-specific handler */
         int result = dispatch_card(ctx, deck, i, &state);
         if (result != 0) {
             free_card_state(&state);
             return result;
-        }
-        
-        /* Check for EN (end of deck) card */
-        if (strcmp(card->card_code, "EN") == 0) {
-            break;
         }
     }
     
@@ -1100,6 +1199,9 @@ static int process_rp_card(context_t *ctx, deck_t *deck, int card_idx,
     
     const card_t *card = &deck->cards[card_idx];
     
+    /* Mark that we've seen an output card */
+    state->seen_output_card = true;
+    
     /* If RP is the first pattern request (no XQ), treat it as execute card */
     if (state->card_sequence_state < 7) {
         /* This RP is acting as the execute request card
@@ -1218,6 +1320,9 @@ static int process_ne_card(context_t *ctx, deck_t *deck, int card_idx,
     
     const card_t *card = &deck->cards[card_idx];
     
+    /* Mark that we've seen an output card */
+    state->seen_output_card = true;
+    
     /* If NE is the first pattern request (no XQ), treat it as execute card */
     if (state->num_rp_cards == 0 && state->card_sequence_state < 7) {
         /* This NE is acting as the execute request card
@@ -1331,6 +1436,9 @@ static int process_nh_card(context_t *ctx, deck_t *deck, int card_idx,
     if (!ctx || !deck || !state) return -1;
     
     const card_t *card = &deck->cards[card_idx];
+    
+    /* Mark that we've seen an output card */
+    state->seen_output_card = true;
     
     /* If NH is the first pattern request (no XQ), treat it as execute card */
     if (state->num_rp_cards == 0 && state->card_sequence_state < 7) {

@@ -44,6 +44,7 @@ static bool run_tests = false;
 static bool run_greens = false;
 static bool recursive = false;
 static bool skip_large = false;
+static bool add_rp_if_missing = false;  /* True if --add-rp flag is specified */
 static int num_input_files = 1; /* for skip-large group behavior */
 static char *input_file = "";
 static char *output_file = "";
@@ -97,6 +98,7 @@ void print_usage(char *argv[])
   puts("    Pass a bare extension (e.g. -w .maa) to convert multiple input files in place.");
   puts("  -f, --format: output format for .out file: 'nec2c' (modern) or 'original' (Fortran, default on all platforms)");
   puts("  -l, --line-ending: line ending style: 'crlf' (default) or 'lf' (Unix/macOS)");
+  puts("  --add-rp: automatically add a default radiation pattern (360° horizontal) if deck ends without one");
   puts("Multiple input files or folders can be specified; each file will generate a .out file.");
   puts("If no input_file is provided, input is read from stdin and output goes to stdout.");
   exit(0);
@@ -118,6 +120,7 @@ static struct option program_options[] =
         {"skip-large", no_argument, NULL, 's'},
         {"format", required_argument, NULL, 'f'},
         {"line-ending", required_argument, NULL, 'l'},
+        {"add-rp", no_argument, NULL, 'a'},
         {0, 0, 0, 0}};
 
 /**
@@ -148,7 +151,7 @@ void parse_options(int argc, char *argv[])
   {
     // eat an option and exit if we're done
     /* portable short options: 'g' has an optional argument */
-    int c = getopt_long(argc, argv, "hvntri:o:e:g::j:w:sf:l:", program_options, &option_index); // should match the items above
+    int c = getopt_long(argc, argv, "hvntri:o:e:g::j:w:sf:l:a", program_options, &option_index); // should match the items above
     if (c == -1)
       break;
 
@@ -232,6 +235,10 @@ void parse_options(int argc, char *argv[])
         exit(1);
       }
       line_ending_explicitly_set = true;
+      break;
+
+    case 'a':
+      add_rp_if_missing = true;
       break;
 
     default:
@@ -553,6 +560,7 @@ static int process_single_file(const char *input_filename, const char *output_fi
   ctx->error_fp = error_fp;
   ctx->source_filename = (strlen(input_filename) > 0) ? (char *)input_filename : NULL;
   ctx->output_format = output_format_choice;
+  ctx->add_rp_if_missing = add_rp_if_missing;
 
   // open input file or use stdin
   // empty string or "-" both mean stdin
