@@ -797,6 +797,12 @@ static void reset_vsorc_buffers_seq(context_t *ctx)
 {
     if (!ctx) return;
     ctx->ex_queue.num_queued = 0;
+    /* Also clear the vsorc counts so stale sources from a prior execution
+     * do not carry over when a new EX sequence begins (e.g. sequential
+     * excitation cases or multi-structure decks). The allocated arrays are
+     * left in place; process_ex_batch will resize them as needed. */
+    ctx->vsorc.num_vsrcs = 0;
+    ctx->vsorc.num_qdsrcs = 0;
 }
 
 /**
@@ -1924,6 +1930,14 @@ static int execute_frequency_loop_sequential(context_t *ctx, deck_t *deck,
         
         /* Excitation setup - Fortran label 53-56 */
         if (state->processing_stage >= 3) {
+            /* Reset vsorc before repopulating from the queue.  process_ex_batch
+             * appends to vsorc, so without this reset the same sources would
+             * accumulate on every frequency step (2 rows at freq 1, 4 at freq 2,
+             * 6 at freq 3, …).  The ex_queue is preserved across iterations so
+             * all sources are re-added correctly each time. */
+            ctx->vsorc.num_vsrcs = 0;
+            ctx->vsorc.num_qdsrcs = 0;
+
             /* Process queued EX cards to populate ctx->vsorc (voltage sources) */
             process_ex_batch(ctx);
             

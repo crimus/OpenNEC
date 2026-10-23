@@ -1,5 +1,14 @@
 OpenNEC version history
 
+Version 2.3.0 - 2026 October 23
+- added --add-rp/-a flag for working with 4nec2 decks (see docs)
+- added "type" to deck_t to track the type: unknown, NEC2, NEC4, NEC5 or 4nec2
+- fixed spacing in the header for different-length version strings
+- other minor reporting layout fixes
+- numerous bug fixes related to th sequential reporting (10, 11, 12, 16, 17, 14 25), partial fix for 14 (see below)
+- merged in the CI smoke test files (pull 22)
+- KNOWN ISSUE: Sommerfeld ground (GN 2) produces different results than either nec2d or nec2c, and they produce different results from each other!
+
 Version 2.3.1b - 2026 October 20
 - fix for the improper scaling applied to LD 7 cards (Issue #24)
 - fix for simultaneous multi-source EX card processing (Issue #25)
