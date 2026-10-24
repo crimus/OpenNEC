@@ -22,9 +22,9 @@ A computer model cannot replace building and measuring an antenna. It can, howev
 - **Effect of nearby objects:** the ground, a tower, a roof, other antenna elements
 - **Sensitivity analysis:** what happens to performance when element length or spacing changes slightly
 
-Modeling systems answer all of these from a description of the wire geometry and a few material parameters. While the results may not exactly match the performance of the real-world version, the *relative* performance is often very accurate. A typical model takes seconds to compute on modern hardware and can be iterated rapidly, giving the designer important notes on how to tune their real-world design.
+Modeling systems answer all of these from a description of the wire geometry and a few material parameters. While the results may not exactly match the performance of the real-world version, the *relative* performance is often very accurate, which allows you to experiment with changes to the design and get a good idea of what that will do. A typical model takes seconds to compute on modern hardware and can be iterated rapidly, giving the designer rapid feedback on how to tune their real-world design.
 
-A model is only as good as its description. A wire diameter that differs from the real antenna, or an incorrect segment count, can shift results substantially. The modeling guidelines in Section III describe how to choose segment counts and sizes to obtain reliable results.
+A model is only as good as its description. A wire diameter that differs from the real antenna, or an incorrect segment count, can shift results substantially. The modeling guidelines below describe how to choose segment counts and sizes to obtain reliable results.
 
 ### What is NEC?
 
@@ -201,7 +201,7 @@ where σ is conductivity (S/m), μ ≈ 4π×10⁻⁷ H/m (non-ferromagnetic wire
 
 ### 3. Modeling structures over ground
 
-Several ground models are available. See [Section III, GN card](#gn--ground-parameters) and [Section III, GD card](#gd--additional-ground-parameters) for full card descriptions, and [Appendix C](#appendix-c-typical-ground-values) for typical earth parameter values.
+Several ground models are available. See [GN card](#gn--ground-parameters) and [GD card](#gd--additional-ground-parameters) for full card descriptions, and [Appendix C](#appendix-c-typical-ground-values) for typical earth parameter values.
 
 #### Perfect ground (GN 1)
 
