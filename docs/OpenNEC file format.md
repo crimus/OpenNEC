@@ -30,12 +30,12 @@ OpenNEC retains most comment markers as-is, the exception being nec2c's use of `
 
 None of these inline comment systems are compatible with software supporting the original NEC format, which would see them either as extraneous data, or bad data in the last field on the card. Such a deck can be converted to NEC compatible format by simply deleting any characters on a given line from the position of the comment character on. Hiding data behind an end-of-line comment means things like measurements can be defined on the same card, but stripping them off would require the system to convert the numeric values in the NEC fields.
 
-NOTE: The short-form symbols for feet, ', and AWG, #, are used for comment markers in common NEC software like nec2c. For this reason, onec stores these as `ft`, `in` and `awg` in the file. User-facing software should convert this *only in the display*, if desired by the user, and should *never save these symbols to the file*. 4nec2 files do allow `#` as the AWG marker in files, so onec treats `#` as the comment marker only at the start of the line.
+**NOTE:** The short-form symbols for feet, `'`, and AWG, `#`, are used for comment markers in common NEC software like nec2c. For this reason, onec stores these as `ft`, `in` and `awg` in the file. User-facing software should convert this to the short forms *only in the display*, if desired by the user, and should *never save these symbols to a new file*. 4nec2 files do allow `#` as the AWG marker in files, so onec treats `#` as the comment marker only at the start of the line, and as an AWG value otherwise.
 
 OpenNEC extensions
 ------------------
 
-OpenNEC was being built with the assumption it would not normally be used as a stand-alone program, but as part of a GUI application. These often add additional data to aid with the graphical display of the antenna design.
+OpenNEC was being built with the assumption it would not normally be used as a stand-alone program, but as part of a GUI application. These progams often add additional data to aid with the graphical display of the antenna design.
 
 To support this use, onec includes a new feature that allows key/value pairs to be inserted on any line as a trailing comment. These will be parsed out separately and presented to the client software without being visible to the underlying NEC implementation. Examples include `material:copper` which an application might use to appropriately color a particular element on the display.
 
@@ -184,9 +184,9 @@ onec variable cards can be placed anywhere in the file as long as they appear be
 
 ### engine definition
 
-One special type of onec comment exists, the file type indicator. This is in the form of a variable definition found inside the comments at the top of the file, typically the last line before the CE. It indicates the file as being NEC-2, 4nec2, NEC-4 (and NEC-4.2) or NEC-5 format, using the "engine" variable. For instance, `CM engine:NEC-5` indicates the file is designed to be used with the NEC-5 engine. "dialect" is a synonym for "engine", either may be used and both are recognized.
+One special type of onec comment exists, the file type indicator. This is in the form of a variable definition found inside the comments at the top of the file, typically the last line before the CE. It indicates the file as being NEC-2, 4nec2, NEC-4 (and NEC-4.2) or NEC-5 format, using the "engine" variable. For instance, `CM engine:NEC-5` indicates the file is designed to be used with the NEC-5 engine. "dialect" is a synonym for "engine", either may be used and both are recognized, and the dashes in the name are also optional.
 
-This definition is optional, and if none is found in the file it will attempt to determine a type based on an internal heuristic by looking for certain other cards. For instance, if there is no engine definition but there are `SY` cards, the deck will be set to the 4nec2 type. If none of these tests can determine the type, it is left as type 0, "unknown".
+This definition line is optional, and if none is found in the file it will attempt to determine a type based on an internal heuristic by looking for certain other cards. For instance, if there is no engine definition but there are `SY` cards, the deck will be set to the 4nec2 type. If none of these tests can determine the type, it is left as type 0, "unknown".
 
 All of the exporters add this line if a type has been set.
 

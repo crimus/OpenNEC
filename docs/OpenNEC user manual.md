@@ -27,9 +27,9 @@ Design concept
 
 OpenNEC was developed to match two common command-line interface styles, as well as modernizing it to make it easier to use for new users.
 
-The original Fortran code used separate `READ` statements to interactively ask the user for the input and output filenames, and does not have any other command line arguments. Engines matching this behaviour are often seen on Windows machines, including the common nec2dx, part of the widely-used 4nec2 package. This is a lightly-updated version of the original Fortran code, and follows its interface. It is normally invoked with no parameters, in which case the `READ` statements in the code are automated using batch file that uses redirection to simulate the user typing in these values.
+The original Fortran code used separate `READ` statements to interactively ask the user for the input and output filenames, and does not have any other command line arguments. Engines matching this behaviour are often seen on Windows machines, including the common nec2dx, part of the widely-used 4nec2 package. This is a lightly-updated version of the original Fortran code, and follows its interface. It is normally invoked with no parameters, in which case the `READ` statements in the code are filled in using a batch file that uses redirection to simulate the user typing in these values.
 
-On Unix machines, and macOS, nec2c is more common. nec2c was modified to work in a somewhat more Unix-like fashion, although it lacks many of the features one might expect in a Unix command-line application. It does not demand interactive values for the input and output filenames, and instead these are specified using the `-i` and `-o` command-line switches. This allows you to call the engine without having to provide interactive values, which is an improvement. In contrast to nec2dx, if nec2c is called without any parameters it will print usage notes and exit.
+On Unix machines and macOS, nec2c is more common. nec2c was modified to work in a somewhat more Unix-like fashion, although it lacks many of the features one might expect in a Unix command-line application, like redirection or piping. It does not demand interactive values for the input and output filenames, and instead these are specified using the `-i` and `-o` command-line switches. This allows you to call the engine without having to provide interactive values, which is an improvement. In contrast to nec2dx, if nec2c is called without any parameters it will print usage notes and exit.
 
 Neither system operates in a fashion like other applications on their respective platforms. For one, you cannot provide the input filename as a "bare" parameter (or "positional parameter"), which is the way most applications work on both platforms. Additionally, on Unix and macOS there is some expectation that you can provide the input and output using redirection or piping, which these engines don't support.
 
@@ -285,7 +285,7 @@ onec -j 4 examples/*.nec
 onec -j 8 -r /antenna/collection/
 ```
 
-This option is ignored when processing a single file. The optimal value depends on your CPU core count and available memory.
+This option is ignored when processing a single file. The optimal value depends on your CPU core count and available memory. Generally you should use a value of N that matches the number of physical cores in your system. There is no standard way to look that up in code, you will have to find it online. A value of 4 will likely work well enough on any modern machine.
 
 **`-a`, `--add-rp`**
 One of the goals for OpenNEC is to run 4nec2 decks without modification. However, 4nec2 modifies decks at runtime in order to make them work in NEC-2, so the 4nec2 deck you open is not the one that actually gets processed.
@@ -649,6 +649,9 @@ ls -l antenna.nec
 chmod 644 antenna.nec
 ```
 
+**Windows: "Can't find DLL", or simply exits with no output**  
+If you are using the BLAS version, ensure OpenBLAS or MKL DLLs are in your PATH or the same directory as `onec.exe`. See [BUILD-WINDOWS](BUILD-WINDOWS.md).
+
 **"Unexpected token" or parsing errors**  
 The input file may have formatting issues. Try:
 - Ensuring the file uses proper line endings for your platform
@@ -670,16 +673,6 @@ Common modeling errors include:
 - Overlapping or nearly touching wires
 - Missing ground plane or incorrect ground parameters
 
-**Windows: "Can't find DLL"**  
-If using the BLAS version, ensure OpenBLAS or MKL DLLs are in your PATH or the same directory as `onec.exe`. See [BUILD-WINDOWS](BUILD-WINDOWS.md).
-
-### Getting Help
-
-If you encounter bugs or have questions:
-- Check the [documentation](.) in the `docs/` directory
-- Review the [example files](../examples/) for reference models
-- Open an issue at https://github.com/maurymarkowitz/OpenNEC/issues
-
 ### Verbose Output
 
 For debugging, combine validation with error logging:
@@ -689,6 +682,10 @@ onec -t -e debug.log antenna.nec
 ```
 
 This captures all warnings, errors, and diagnostic information.
+
+### Getting Help
+
+If you encounter bugs or have questions, open an issue at https://github.com/maurymarkowitz/OpenNEC/issues
 
 Performance tips
 ----------------

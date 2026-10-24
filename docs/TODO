@@ -1,6 +1,6 @@
 Items still to be implemented:
 
-* add some simple way to add an RP or similar card so you can run 4nec2 without modifying the deck
+* add some more tests for the deck type if none is specified
 
 * sectionize the deck based on NX cards
 
@@ -19,8 +19,6 @@ Items still to be implemented:
 * ensure that the logic for optional placing the formulas in the onec comment is implemented, and that if it is used, and the deck is written in nec-2 format, that the value is copied into the corresponding field
 
 * remember to run clang static analyzer at some point
-
-* add handlers for ITeration and OPtimization cards, which produce multiple output runs from a single deck. in onec these should be processed out into some sort of "run" or "simulate" object with any differences from the original definitions. It is not clear whether these are really used in the wild, or if this is entirely in the 4nec2 UI.
 
 * Add NEC-4 cards:
 ** 4nec2's NEC-4 examples (see Catenary.nec), has "CW", "IS", "VC" and "UM"
