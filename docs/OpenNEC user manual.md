@@ -3,12 +3,14 @@ OpenNEC User Manual
 
 Introduction
 ------------
+
 This manual describes how to use the OpenNEC command-line program (`onec`) to analyze antenna models and convert between file formats. It covers installation, command-line options, practical examples, and integration with other antenna modeling tools.
 
 For instructions on creating and modeling antennas, see the [OpenNEC modeling manual](OpenNEC%20modeling%20manual.md). For information on using OpenNEC as a library in your own programs, see the [OpenNEC programmer manual](OpenNEC%20programmer%20manual.md).
 
 What is OpenNEC?
 ----------------
+
 OpenNEC (`onec`) is a high-performance implementation of the NEC-2 antenna simulation code. It reads antenna designs from text files called "decks", and calculates their electrical properties such as radiation patterns, impedance, and gain.
 
 **Key features:**
@@ -22,6 +24,7 @@ OpenNEC (`onec`) is a high-performance implementation of the NEC-2 antenna simul
 
 Design concept
 --------------
+
 OpenNEC was developed to match two common command-line interface styles, as well as modernizing it to make it easier to use for new users.
 
 The original Fortran code used separate `READ` statements to interactively ask the user for the input and output filenames, and does not have any other command line arguments. Engines matching this behaviour are often seen on Windows machines, including the common nec2dx, part of the widely-used 4nec2 package. This is a lightly-updated version of the original Fortran code, and follows its interface. It is normally invoked with no parameters, in which case the `READ` statements in the code are automated using batch file that uses redirection to simulate the user typing in these values.
@@ -34,6 +37,7 @@ OpenNEC supports both of these interfaces, with the goal being that it can be us
 
 Installation
 ------------
+
 OpenNEC can be installed using pre-built binaries or compiled from source. Detailed installation instructions are available in the main [README](../README.MD).
 
 ### Quick Install
@@ -284,13 +288,13 @@ onec -j 8 -r /antenna/collection/
 This option is ignored when processing a single file. The optimal value depends on your CPU core count and available memory.
 
 **`-a`, `--add-rp`**
-One of the goals for OpenNEC is to run 4nec2 decks without modification. However, 4nec2 modifies decks at runtime in order to make them work in NEC-2.
+One of the goals for OpenNEC is to run 4nec2 decks without modification. However, 4nec2 modifies decks at runtime in order to make them work in NEC-2, so the 4nec2 deck you open is not the one that actually gets processed.
 
-Among these modifications is the addition of reporting cards like RP, NE, or NH, depending on what the user selects when running a calculation. Since these are not saved into the original 4nec2 deck the user saves from the GUI, decks downloaded from the 'net will often have no output.
+Among the modifications 4nec2 makes is the addition of reporting cards like RP, NE, or NH, depending on what the user selects when running a calculation. Since these are not saved into the original 4nec2 deck, decks downloaded from the 'net will often produce no output.
 
 To produce something useful, the `-a` flag can be turned on when using 4nec2 decks. If the reporting engine reaches the end of the deck and it has not seen an RP, NE, or NH, it will pretend there was an RP at the end. This produces some useful output without having to modify the original deck.
 
-The RP is a single horizontal slice at 90 degrees (flat) with samples every 1 degree for the entire 360 degrees. There is no obvious "default" pattern, so this one was selected as it gives you reasonable estimages for gain in the most common use-cases, and you can get the beamwidth at a glance.
+The RP is a single horizontal slice at 90 degrees (flat) with samples every 1 degree for the entire 360 degrees. There is no obvious "default" pattern, so this one was selected as it gives you reasonable estimates for gain in the most common use-cases, and you can get the beamwidth at a glance.
 
 Note that this option looks for existing reporting cards first, so if they are already in the deck this option will be skipped. This means you can safely turn it on for almost any deck.
 
@@ -384,8 +388,8 @@ onec -g custom.ngf antenna.nec   # Creates custom.ngf
 
 Green's function files are used for advanced electromagnetic analysis and coupling calculations between antennas.
 
-Practical Examples
-------------------
+Examples
+--------
 
 ### Example 1: Basic Simulation
 
@@ -614,7 +618,7 @@ OpenNEC uses standard Unix return codes:
 
 In batch mode, OpenNEC continues processing remaining files even if one fails, and returns the appropriate code based on the worst error encountered.
 
-File Format Support
+File format support
 -------------------
 
 OpenNEC can read and write multiple antenna modeling file formats:
@@ -686,7 +690,7 @@ onec -t -e debug.log antenna.nec
 
 This captures all warnings, errors, and diagnostic information.
 
-Performance Tips
+Performance tips
 ----------------
 
 ### Multi-Threading
@@ -708,6 +712,10 @@ When processing many files:
 - Use `-j N` to process multiple files in parallel
 - Use `--skip-large` to avoid extremely time-consuming models
 - Use `-n -t` first to validate all files before running simulations
+
+When using the `-j` option, choose a value for N that is close to the number of physical cores in your machine, *not the number of virtual cores*. For instance, it is quite common for modern processors to have, say, four physical cores on the chip, each of which is able to run two threads. Due to the way that NEC is data-bound, the key to improving performance is to avoid communications between the cores, and threading will have little effect. So in this example, `-j 4` would likely provide the best performance.
+
+Unfortunately there does not appear to be a standard way to find this number programmatically, you have to look it up online.
 
 ### Model Optimization
 
