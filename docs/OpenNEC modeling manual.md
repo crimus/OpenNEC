@@ -7,7 +7,7 @@ This manual describes how to build and analyze antenna models with OpenNEC. The 
 
 The manual also covers the modeling-related extensions found in OpenNEC: symbolic formulas, unit suffixes, wire-gauge notation, current source excitation, and additional loading types. The intent is that a user familiar with any NEC-2 simulator should find the card descriptions and modeling rules directly applicable, while OpenNEC-specific additions are clearly marked.
 
-For a description of the OpenNEC program itself, refer to the [OpenNEC programmer manual](OpenNEC programmer manual.md).
+For a description of the OpenNEC program itself, refer to the [OpenNEC programmer manual](OpenNEC%20programmer%20manual.md).
 
 I. Key concepts
 ---------------
