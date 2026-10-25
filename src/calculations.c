@@ -9,6 +9,9 @@
  *******************************************************************/
 
 #include <assert.h>
+#if defined(__SSE2__)
+#include <emmintrin.h>
+#endif
 #include "internals.h"
 #include "calculations.h"
 #include "geometry.h"
@@ -619,6 +622,21 @@ double db10(const context_t *ctx, double x )
 
 /*-----------------------------------------------------------------------*/
 
+#if defined(__SSE2__)
+static inline double simd_abs_max2(double a, double b)
+{
+  const __m128d v = _mm_set_pd(fabs(b), fabs(a));
+  double out[2];
+  _mm_storeu_pd(out, v);
+  return fmax(out[0], out[1]);
+}
+#else
+static inline double simd_abs_max2(double a, double b)
+{
+  return fmax(fabs(a), fabs(b));
+}
+#endif
+
 /* function db20 returns db for mag**2 (power) i */
 double db20(const context_t *ctx, double x )
 {
@@ -1004,8 +1022,8 @@ void test_romberg_convergence(context_t *ctx, double f1r, double f2r, double *tr
 {
   double den;
   
-  den= fabs( f2r);
-  *tr= fabs( f2i);
+  den = simd_abs_max2(f2r, f2i);
+  *tr = fabs(f2i);
   
   if( den < *tr)
     den= *tr;
