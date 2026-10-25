@@ -90,13 +90,17 @@ static int resolve_pct_segment(const context_t *ctx, const card_t *card,
 /******************************************************************************
  * process_ex_batch()
  *
- * Process all queued EX cards and add them to the voltage source arrays.
- * This implements the batch processing approach used by the original Fortran code,
- * allowing multiple EX cards in the same frequency run for coupling calculations.
+ * Process all queued EX cards and add them to the voltage source arrays
+ * without removing them from the queue. 
  *
- * When multiple EX cards are present (e.g., EX 0 1 1 and EX 0 2 1), each
- * represents a voltage source on a different segment. Coupling calculations
- * compare these sources to determine mutual coupling and isolation data.
+ * Previously, OpenNEC would process one EX card, solve, then replace it with
+ * the next. This resulted in sequential processing where only the last source
+ * was reported, breaking linear superposition.
+ *
+ * Now, all EX cards at one frequency are accumulated into source arrays in one call,
+ * then solved together. Cards remain in the queue until a new frequency batch
+ * (FR card or geometry change) clears them. The loop used to happen in control.c,
+ * but now we do it here.
  *
  * @param ctx  The NEC context with queued EX cards
  * @return 0 on success, -1 on error
@@ -106,61 +110,37 @@ int process_ex_batch(context_t *ctx)
     if (ctx->ex_queue.num_queued == 0) {
         return 0;  /* Nothing to process */
     }
-    
-    /* Process FIRST queued EX card and remove from queue.
-       With one-at-a-time processing, frequency loop is called after each XQ,
-       which allows coupling_flag to increment properly for multi-source coupling. 
-       
-       KEY: EX cards REPLACE the active source (not accumulate) since we solve the 
-       matrix separately for each source. However, coupling_flag persists across
-       frequency loops to accumulate Y-parameters for the coupling calculation.*/
-    
-    /* Clear previous voltage sources before adding new one (solve for one source at a time) */
-    ctx->vsorc.num_vsrcs = 0;
-    if (ctx->vsorc.vsrc_segs != NULL) free(ctx->vsorc.vsrc_segs);
-    if (ctx->vsorc.vsrc_voltages != NULL) free(ctx->vsorc.vsrc_voltages);
-    ctx->vsorc.vsrc_segs = NULL;
-    ctx->vsorc.vsrc_voltages = NULL;
-    
-    ex_card_t *ex = &ctx->ex_queue.queued[0];
-    
-    if (ex->type == 5) {
-        /* Type 5: Incident plane wave or elementary current source */
-        ctx->vsorc.num_qdsrcs++;
-        size_t mreq = (size_t)ctx->vsorc.num_qdsrcs * sizeof(int);
-        mem_realloc(ctx, (void **)&ctx->vsorc.qdsrc_segs, mreq);
-        mem_realloc(ctx, (void **)&ctx->vsorc.qdsrc_indices, mreq);
+     for (int card_idx = 0; card_idx < ctx->ex_queue.num_queued; card_idx++) {
+        ex_card_t *ex = &ctx->ex_queue.queued[card_idx];
         
-        mreq = (size_t)ctx->vsorc.num_qdsrcs * sizeof(complex double);
-        mem_realloc(ctx, (void **)&ctx->vsorc.qdsrc_voltages, mreq);
-        mem_realloc(ctx, (void **)&ctx->vsorc.qdsrc_voltages_saved, mreq);
-        
-        int idx = ctx->vsorc.num_qdsrcs - 1;
-        ctx->vsorc.qdsrc_segs[idx] = ex->seg_index;
-        ctx->vsorc.qdsrc_voltages[idx] = ex->voltage;
-        
-    } else if (ex->type == 0) {
-        /* Type 0: Applied voltage source - REPLACES previous (solve one source at a time) */
-        ctx->vsorc.num_vsrcs = 1;  /* SET to 1 */
-        size_t mreq = sizeof(int);
-        mem_realloc(ctx, (void **)&ctx->vsorc.vsrc_segs, mreq);
-        
-        mreq = sizeof(complex double);
-        mem_realloc(ctx, (void **)&ctx->vsorc.vsrc_voltages, mreq);
-        
-        /* Store at index 0 */
-        ctx->vsorc.vsrc_segs[0] = ex->seg_index;
-        ctx->vsorc.vsrc_voltages[0] = ex->voltage;
-        /* Voltage source added */;
-    }
-    
-    /* Remove first card from queue and shift remaining cards */
-    for (int i = 0; i < ctx->ex_queue.num_queued - 1; i++) {
-        ctx->ex_queue.queued[i] = ctx->ex_queue.queued[i + 1];
-    }
-    ctx->ex_queue.num_queued--;
-    if (ctx->ex_queue.num_queued == 0) {
-        ctx->ex_queue.flow = 0;
+        if (ex->type == 5) {
+            /* Type 5: Charge-discontinuity voltage source - accumulate */
+            ctx->vsorc.num_qdsrcs++;
+            size_t mreq = (size_t)ctx->vsorc.num_qdsrcs * sizeof(int);
+            mem_realloc(ctx, (void **)&ctx->vsorc.qdsrc_segs, mreq);
+            mem_realloc(ctx, (void **)&ctx->vsorc.qdsrc_indices, mreq);
+            
+            mreq = (size_t)ctx->vsorc.num_qdsrcs * sizeof(complex double);
+            mem_realloc(ctx, (void **)&ctx->vsorc.qdsrc_voltages, mreq);
+            mem_realloc(ctx, (void **)&ctx->vsorc.qdsrc_voltages_saved, mreq);
+            
+            int idx = ctx->vsorc.num_qdsrcs - 1;
+            ctx->vsorc.qdsrc_segs[idx] = ex->seg_index;
+            ctx->vsorc.qdsrc_voltages[idx] = ex->voltage;
+            
+        } else if (ex->type == 0) {
+            /* Type 0: Applied voltage source - accumulate */
+            ctx->vsorc.num_vsrcs++;
+            size_t mreq = (size_t)ctx->vsorc.num_vsrcs * sizeof(int);
+            mem_realloc(ctx, (void **)&ctx->vsorc.vsrc_segs, mreq);
+            
+            mreq = (size_t)ctx->vsorc.num_vsrcs * sizeof(complex double);
+            mem_realloc(ctx, (void **)&ctx->vsorc.vsrc_voltages, mreq);
+            
+            int idx = ctx->vsorc.num_vsrcs - 1;
+            ctx->vsorc.vsrc_segs[idx] = ex->seg_index;
+            ctx->vsorc.vsrc_voltages[idx] = ex->voltage;
+        }
     }
     
     return 0;
@@ -462,39 +442,18 @@ int run_simulation(context_t *ctx, deck_t *deck)
                     ctx->batch_cards_echoed = false;  /* Reset for new frequency so cards are echoed again */
                 }
                 
-                /* Process queued EX cards one at a time, executing frequency loop
-                   after each. This allows coupling_flag to increment properly
-                   across multiple XQ commands for multi-source coupling.
-                   IMPORTANT: Save base frequency before loop and reset it on each iteration,
-                   otherwise frequency sweep will not work correctly for multiple EX cards.
-                   DO NOT reset freq_step_output_written between EX cards - each frequency
-                   gets ONE frequency header, shared by all EX cards at that frequency.
-                   Card echo printed only once per frequency. Coupling data is printed after
-                   all sources are processed at the same frequency. */
-                if (ctx->ex_queue.num_queued > 0) {
-                    double base_freq_mhz = ctx->save.freq_mhz;  /* Save base frequency */
-                    while (ctx->ex_queue.num_queued > 0) {
-                        ctx->save.freq_mhz = base_freq_mhz;  /* Reset to base frequency before each EX */
-                        /* Do NOT reset freq_step_output_written here - it must persist across
-                           EX cards at the same frequency to prevent duplicate FREQUENCY headers.
-                           Only write frequency header once per unique frequency. */
-                        /* Do NOT reset batch_cards_echoed - it prints once per frequency batch,
-                           not once per EX card within the batch */
-                        if (process_ex_batch(ctx) != 0) {
-                            return -1;
-                        }
-                        
-                        ctx->frequency_loop_ran = true;
-                        if (execute_frequency_loop(ctx, ctx->save.num_freq, ctx->save.freq_step_type, ctx->save.freq_step, deck) != 0) {
-                            return -1;
-                        }
-                    }
-                } else {
-                    /* No EX cards queued: execute frequency loop once for this batch */
-                    ctx->frequency_loop_ran = true;
-                    if (execute_frequency_loop(ctx, ctx->save.num_freq, ctx->save.freq_step_type, ctx->save.freq_step, deck) != 0) {
+                // process queued EX cards. previously we looped here,
+                // but now that happens in the function
+                 if (ctx->ex_queue.num_queued > 0) {
+                    if (process_ex_batch(ctx) != 0) {
                         return -1;
                     }
+                }
+                
+                /* Execute frequency loop ONCE with all sources active */
+                ctx->frequency_loop_ran = true;
+                if (execute_frequency_loop(ctx, ctx->save.num_freq, ctx->save.freq_step_type, ctx->save.freq_step, deck) != 0) {
+                    return -1;
                 }
             }
         }
@@ -665,25 +624,22 @@ static int calculation_defaults(context_t *ctx)
     ctx->plot.plot_component = 0;
     ctx->plot.plot_gain_type = 0;
     ctx->yparm.num_pairs = 0;
-    /* NOTE: Do NOT reset coupling_flag here - it should persist within a frequency
-       batch to allow coupling_flag to increment across multiple EX/XQ pairs.
-       Only reset when a new FR card is encountered. */
-    /* ctx->yparm.coupling_flag = 0;      REMOVED */
-    /* NOTE: Do NOT reset vsorc here - it should persist across XQ boundaries
-       within a frequency batch. Only reset when a new FR card is encountered. */
-    /* ctx->vsorc.num_vsrcs = 0;           REMOVED */
-    /* ctx->vsorc.num_qdsrcs = 0;          REMOVED */
+    // NOTE: previous versions were resetting these flags (and those below)
+    // and that was causing rippling problems when the batch boundariews did
+    // not line up. Then we changed it to get reset to 0, but now
+    // we're preserving it again. This has to do with GH Issue #25
+    /* ctx->vsorc.num_vsrcs = 0;           CORRECTLY PRESERVED */
+    /* ctx->vsorc.num_qdsrcs = 0;          CORRECTLY PRESERVED */
     ctx->gnd.is_perfect = 0;
     ctx->gnd.num_radials = 0;
     ctx->dataj.k_half_len = 1.0;  // Default matrix integration limit
     ctx->dataj.use_extended_kernel = 0;   // Extended thin-wire kernel off by default
     ctx->gnd.far_field_type = -1;
     ctx->frequency_loop_ran = false;
-    /* NOTE: Do NOT reset freq_step_output_written here - it should persist across
-       EX/XQ boundaries within a frequency batch to prevent duplicate frequency
-       output when multiple EX cards are processed separately.
-       Only reset when a new FR card is encountered. */
-    /* ctx->freq_step_output_written = false;  REMOVED */
+    // NOTE: as above: do NOT reset freq_step_output_written here - it should persist across
+    //  frequency batch to prevent duplicate frequency output headers.
+        //  Only reset when a new FR card is encountered.
+    /* ctx->freq_step_output_written = false;  CORRECTLY PRESERVED */
     ctx->preamble_written = false;
     
     // Note: The following old main.c local variables are not stored in ctx

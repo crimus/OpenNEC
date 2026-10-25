@@ -726,6 +726,7 @@ struct context_t
 	bool batch_cards_echoed;        /* True once batch cards (FR/CP/EX/XQ) have been echoed for this frequency */
 	bool first_output_for_frequency; /* True once FREQUENCY header has been output at current frequency (persists across EX iterations) */
 	bool step_size_warned;    /* True once the Romberg step-size-limited warning has been emitted */
+	bool add_rp_if_missing;   /* True if --add-rp flag was specified on command line */
 };
 
 /* Internal initialization and cleanup (called by create_context/destroy_context) */

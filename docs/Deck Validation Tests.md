@@ -1,7 +1,7 @@
 OpenNEC validation tests
 ========================
 
-This document summarizes the validation and guidance checks implemented in OpenNEC to help authors catch common deck issues early. These checks run in the tests-only mode and during normal processing, reporting warnings vs. error conditions with different severity codes.
+This document summarizes the validation and guidance checks implemented in OpenNEC to help authors catch common deck issues. These checks run in the tests-only mode as well as normal processing, reporting warnings vs. error conditions with different severity codes. Most of these are taken from the extensive list found in the Cebic collection, along with some additional ones seen in 4nec2, with additional whole-deck validity tests added on top, which errors out before it tries to calculate with erronious data.
 
 ## Severity levels
 - 0: Warning — calculation may proceed, but you should fix it if possible.

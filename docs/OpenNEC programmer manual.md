@@ -3,12 +3,14 @@ OpenNEC Programmer Manual
 
 Introduction
 ------------
+
 This manual focuses on how to use the `libopennec.a` library in other programs, and the internal structures and functions that you call from the library in your programs. It also includes guidance on generating and validating NEC decks, controlling simulations, import and export of other formats, and interpreting output.
 
 This manual is aimed at programmers intending to call OpenNEC from their own code. For those looking for instructions on how to use the program from the command line, see the main [README](../README.MD) and the [OpenNEC user manual](OpenNEC%20user%20manual.md). For instructions on how to build models and decks, see the [OpenNEC modeling manual](OpenNEC%20modeling%20manual.md).
 
 Using OpenNEC as a plug-in engine
 ---------------------------------
+
 The OpenNEC command-line shell program, `onec`, has been designed to be able to work as a drop-in replacement for the original Fortran NEC-2 executables like `nec2d`, as well as programs that expect the slightly different parameter style found in the `nec2c` and `necpp` versions.
 
 On Unix systems, `onec` matches the nec2c interface, which used the `-i` parameter to define the input filename, and `-o` for the output filename. If no `-o` is provided, it writes to `stdout`, allowing you to pipe it where you need. If `-o` is provided but has no parameter, it makes a new output file using the input name and changing the extension to `.out`. If no paramaters are provided, the original nec2c will exit with usage notes. OpenNEC changes this only slightly, allowing you to supply the file through redirection, so you can pipe in the file(s).
@@ -26,6 +28,7 @@ You can use `-l`, `--line-ending` to select the line ending style for output fil
 
 Using OpenNEC as a library
 --------------------------
+
 Although `onec` provides a compatible shell interface for use with existing programs, it is mostly intended to be used as a statically-linked library within other programs.
 
 ### High-Level Architecture
@@ -310,10 +313,10 @@ Because Objective-C automatic reference counting (ARC) does not manage C memory,
 
 The same opaque-handle pattern applies to any language with a C FFI. Julia uses `ccall()` with `Ptr{Cvoid}` for the context; Go uses `import "C"` with cgo, noting that the `deck_t` struct fields are accessible directly if desired. In all cases, the host language manages the lifetime of the context handle while OpenNEC manages the memory it allocates internally.
 
-Deck File Format
+Deck file format
 ----------------
 
-A NEC deck is a plain-text file containing one card per line. Each card consists of a two-letter card code followed by numeric fields or other parameters. The deck is divided into logical sections: comments, optional symbols (SY cards, not part of NEC-2), geometry definition, control cards, and terminators. For complete technical details on each card, refer to the [official NEC-2 PROGRAM INPUT documentation](https://www.nec2.org/part_3/control.html).
+A NEC deck is a plain-text file containing one card per line. Each card consists of a two-letter card code followed by numeric fields or other parameters. The deck is divided into logical sections: comments, optional symbols (SY cards, not part of NEC-2), geometry definition, control cards, and terminators. For complete technical details on each card, refer to the [official NEC-2 PROGRAM INPUT documentation](https://www.nec2.org/part_3/control.html) or the [OpenNEC modeling manual](OpenNEC%20modeling%20manual.md).
 
 ### Comments
 
@@ -701,12 +704,12 @@ To convert a deck with SY cards to pure NEC-2 format:
 
 This conversion preserves all calculation results while ensuring portability. Use the `onec` tool with output formatting options to save this converted format automatically.
 
-OpenNEC Extensions
+OpenNEC extensions
 ------------------
 
 OpenNEC extends the standard NEC-2 format with features designed to support GUI applications, deck development workflows, and improved compatibility with other modern antenna software. These extensions are carefully designed to be invisible to standard NEC-2 parsers, allowing decks with extensions to remain compatible with legacy software.
 
-For complete technical details on the extension system, see [OpenNEC file format § OpenNEC extensions](../doc/OpenNEC%20file%20format.md#opennec-extensions).
+For complete technical details on the extension system, see [OpenNEC file format § OpenNEC extensions](OpenNEC%20file%20format.md#opennec-extensions).
 
 ### Key-Value Metadata Extensions
 
@@ -852,7 +855,7 @@ For complete details on formula extraction and substitution, see [Symbols and Fo
 **Versioning and Future Extensions:**
 OpenNEC extensions are versioned along with the software release. New extensions are documented in [VERSIONS](../doc/VERSIONS) with their introduction date. Applications using OpenNEC should gracefully ignore unknown extensions (treating them as comments) to ensure forward compatibility with future versions of the software.
 
-Output Formats
+Output formats
 --------------
 
 OpenNEC produces output in multiple formats designed to support post-processing, visualization, compatibility with other tools, and preservation of design changes made during simulation. This section covers the primary output formats and their uses.

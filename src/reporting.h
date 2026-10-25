@@ -94,6 +94,8 @@ typedef struct {
     } rp_cards[MAX_RP_CARDS_PER_FREQUENCY];
     int num_rp_cards;           /**< Number of RP cards collected from look-ahead */
     
+    bool seen_output_card;      /**< True if RP, NE, NH, or other output card has been seen */
+    
     double last_freq_output_mhz;  /**< Last frequency for which frequency output was written */
     
 } card_state_t;
