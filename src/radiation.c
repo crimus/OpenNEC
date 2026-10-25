@@ -27,6 +27,10 @@
 #include "fields.h"
 #include "calculations.h"
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 /* Forward declarations for internal functions */
 /* Formerly nec2c: ffld */
 static void far_e_field(context_t *restrict ctx, double thet, double phi, complex double *restrict eth, complex double *restrict eph);
@@ -43,6 +47,7 @@ static void radiated_field_with_ground(context_t *restrict ctx, double rho, doub
 void far_e_field(context_t *restrict ctx, double thet, double phi,
 	complex double *restrict eth, complex double *restrict eph )
 {
+//   int k, i, ip;
   int k, i, ip;
   bool jump;
   double phx, phy, roz, rozs, thx, thy, thz, rox, roy;
@@ -426,13 +431,15 @@ void radiated_field_with_ground(context_t *restrict ctx, double rho, double phi,
 /* Formerly nec2c: rdpat */
 void compute_radiation_pattern(context_t *ctx)
 {
-  int i, kth, kph, point_idx;
+  int kth, kph, point_idx;
   double prad, gcon, gcop, gmax, pint, tmp1, tmp2;
-  double phi, pha, thet, tha, ethm2, ethm, *gain = NULL;
+  double phi, pha, thet, tha, ethm2, ethm;
+  double *thetas = NULL, *phis = NULL;
+  int *valid_kth = NULL, nvalid = 0;
   double etha, ephm2, ephm, epha, tilta, emajr2, eminr2, axrat;
   double dfaz, dfaz2, cdfaz, tstor1, tstor2, stilta, gnmj;
   double gnmn, gnv, gnh, gtot, tmp3, tmp4, da;
-  complex double  eth, eph, erd;
+  complex double eth, eph, erd;
   
   /* Free any previous radiation pattern data */
   if (ctx->rpat.points != NULL) {
@@ -462,11 +469,7 @@ void compute_radiation_pattern(context_t *ctx)
   }
   
   /* Allocate memory for gain normalization buffer if needed */
-  if (ctx->fpat.normalize_gain > 0) {
-    size_t mreq = (size_t)(ctx->fpat.num_theta * ctx->fpat.num_phi);
-    mreq *= sizeof(double);
-    mem_alloc(ctx, (void *)&gain, mreq);
-  }
+
   
   /* Calculate gain factors */
   if ((ctx->fpat.excitation_type == 0) || (ctx->fpat.excitation_type == 5)) {
@@ -495,41 +498,56 @@ void compute_radiation_pattern(context_t *ctx)
   mem_alloc(ctx, (void **)&ctx->rpat.points, mreq);
   
   /* Initialize calculation variables */
-  i = 0;
-  point_idx = 0;
   gmax = -1.0e+10;
   pint = 0.0;
   tmp1 = ctx->fpat.phi_step * TA;
   tmp2 = 0.5 * ctx->fpat.theta_step * TA;
   phi = ctx->fpat.phi_start - ctx->fpat.phi_step;
-  
-  /* Main calculation loop over phi and theta */
+
+  /* Theta values accumulated sequentially to match the serial result exactly */
+  thetas = malloc(sizeof(double) * (size_t)ctx->fpat.num_theta);
+  phis = malloc(sizeof(double) * (size_t)ctx->fpat.num_phi);
+  valid_kth = malloc(sizeof(int) * (size_t)ctx->fpat.num_theta);
+  thet = ctx->fpat.theta_start - ctx->fpat.theta_step;
+  for (kth = 0; kth < ctx->fpat.num_theta; kth++) {
+    thet += ctx->fpat.theta_step;
+    thetas[kth] = thet;
+    if ((ctx->gnd.has_ground == 2) && (thet > 90.01) && (ctx->gnd.far_field_type != 1))
+      continue;
+    valid_kth[nvalid++] = kth;
+  }
   for (kph = 1; kph <= ctx->fpat.num_phi; kph++) {
     phi += ctx->fpat.phi_step;
-    pha = phi * TA;
-    thet = ctx->fpat.theta_start - ctx->fpat.theta_step;
-    
-    for (kth = 1; kth <= ctx->fpat.num_theta; kth++) {
-      thet += ctx->fpat.theta_step;
-      
-      /* Skip if beyond 90 degrees with symmetry */
-      if ((ctx->gnd.has_ground == 2) && (thet > 90.01) && (ctx->gnd.far_field_type != 1))
-        continue;
-      
+    phis[kph - 1] = phi;
+  }
+  point_idx = ctx->fpat.num_phi * nvalid;
+
+  /* Calculate each radiation-pattern point in parallel. */
+#ifdef _OPENMP
+  omp_set_num_threads(omp_get_max_threads());
+#endif
+#pragma omp parallel for collapse(2) \
+  private(phi, pha, kth, thet, tha, ethm2, ethm, etha, ephm2, ephm, epha, tilta, emajr2, eminr2, axrat, dfaz, dfaz2, cdfaz, tstor1, tstor2, stilta, gnmj, gnmn, gnv, gnh, gtot, tmp3, tmp4, da, eth, eph, erd) \
+  reduction(max:gmax) reduction(+:pint)
+  for (kph = 1; kph <= ctx->fpat.num_phi; kph++) {
+    for (int kv = 0; kv < nvalid; kv++) {
+      phi = phis[kph - 1];
+      pha = phi * TA;
+      kth = valid_kth[kv] + 1;
+      thet = thetas[kth - 1];
       tha = thet * TA;
-      rpat_point_t *pt = &ctx->rpat.points[point_idx];
+      rpat_point_t *pt = &ctx->rpat.points[(size_t)(kph - 1) * nvalid + kv];
       pt->theta = thet;
       pt->phi = phi;
-      
-      /* Calculate E-fields */
+
       if (ctx->gnd.far_field_type != 1) {
         far_e_field(ctx, tha, pha, &eth, &eph);
         pt->erdm = 0.0;
         pt->erda = 0.0;
-      }
-      else {
-        radiated_field_with_ground(ctx, ctx->fpat.range / ctx->geometry.wavelength, pha, thet / ctx->geometry.wavelength,
-             &eth, &eph, &erd, ctx->gnd.impedance_ratio, ctx->gnd.has_ground);
+      } else {
+        radiated_field_with_ground(ctx, ctx->fpat.range / ctx->geometry.wavelength,
+            pha, thet / ctx->geometry.wavelength, &eth, &eph, &erd,
+            ctx->gnd.impedance_ratio, ctx->gnd.has_ground);
         pt->erdm = cabs(erd);
         pt->erda = complex_angle_deg(ctx, erd);
       }
@@ -600,7 +618,6 @@ void compute_radiation_pattern(context_t *ctx)
         
         /* Store gain for normalization if requested */
         if (ctx->fpat.normalize_gain > 0) {
-          i++;
           switch (ctx->fpat.normalize_gain) {
             case 1: tstor1 = gnmj; break;
             case 2: tstor1 = gnmn; break;
@@ -610,7 +627,6 @@ void compute_radiation_pattern(context_t *ctx)
             default: tstor1 = gtot; break;
           }
           
-          if (gain != NULL) gain[i-1] = tstor1;
           if (tstor1 > gmax)
             gmax = tstor1;
         }
@@ -666,15 +682,14 @@ void compute_radiation_pattern(context_t *ctx)
         if (ephm2_adj <= 1.0e-10 * (ethm2_adj + 1.0e-30))
           epha = 0.0;
       }
-
-      pt->ethm = ethm;
-      pt->etha = etha;
-      pt->ephm = ephm;
-      pt->epha = epha;
-      
-      point_idx++;
-    } /* for kth */
-  } /* for kph */
+      {
+        pt->ethm = ethm;
+        pt->etha = etha;
+        pt->ephm = ephm;
+        pt->epha = epha;
+      }
+    }
+  }
   
   /* Update num_points to the actual number of computed points
      (some may have been skipped if they exceeded 90 degrees) */
@@ -705,6 +720,7 @@ void compute_radiation_pattern(context_t *ctx)
   }
   
   /* Free temporary gain buffer */
-  if (gain != NULL)
-    mem_free(ctx, (void *)&gain);
+  free(thetas);
+  free(phis);
+  free(valid_kth);
 }
