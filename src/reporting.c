@@ -410,6 +410,23 @@ static int __attribute__((unused)) calculate_coupling_parameters(context_t *ctx)
     return 0;
 }
 
+static void write_card_echo(FILE *file, const context_t *ctx, int card_number,
+                            const card_t *card)
+{
+    if (ctx->output_format == OUTPUT_FORMAT_ORIGINAL) {
+        fprintf(file, " ***** DATA CARD NO. %2d   %s", card_number, card->card_code);
+    } else {
+        fprintf(file, "  DATA CARD No: %3d %s", card_number, card->card_code);
+    }
+
+    fprintf(file, " %3d", card->i[1]);
+    for (int j = 2; j <= 4; j++)
+        fprintf(file, " %5d", card->i[j]);
+    for (int j = 1; j <= 6; j++)
+        fprintf(file, " %12.5E", card->f[j]);
+    fputc('\n', file);
+}
+
 static int dispatch_card(context_t *ctx, deck_t *deck, int card_idx,
                         card_state_t *state)
 {
@@ -428,11 +445,7 @@ static int dispatch_card(context_t *ctx, deck_t *deck, int card_idx,
     /* Write card echo to output if configured */
     if (ctx->output_fp) {
         state->total_cards_processed++;
-        fprintf(ctx->output_fp,
-            "  DATA CARD No: %3d "
-            "%s %3d %5d %5d %5d %12.5E %12.5E %12.5E %12.5E %12.5E %12.5E\n",
-            state->total_cards_processed, code, card->i[1], card->i[2], card->i[3], card->i[4],
-            card->f[1], card->f[2], card->f[3], card->f[4], card->f[5], card->f[6]);
+        write_card_echo(ctx->output_fp, ctx, state->total_cards_processed, card);
     }
     
     /* Dispatch based on card code - Fortran ATST array, nec2c switch */
@@ -1060,13 +1073,7 @@ static int process_xq_card(context_t *ctx, deck_t *deck, int card_idx,
                 strcmp(pattern_card->card_code, "PQ") == 0) {
                 
                 state->total_cards_processed++;
-                fprintf(ctx->output_fp,
-                    "  DATA CARD No: %3d "
-                    "%s %3d %5d %5d %5d %12.5E %12.5E %12.5E %12.5E %12.5E %12.5E\n",
-                    state->total_cards_processed, pattern_card->card_code,
-                    pattern_card->i[1], pattern_card->i[2], pattern_card->i[3], pattern_card->i[4],
-                    pattern_card->f[1], pattern_card->f[2], pattern_card->f[3], 
-                    pattern_card->f[4], pattern_card->f[5], pattern_card->f[6]);
+                write_card_echo(ctx->output_fp, ctx, state->total_cards_processed, pattern_card);
             }
         }
     }
@@ -1282,13 +1289,7 @@ static int process_ne_card(context_t *ctx, deck_t *deck, int card_idx,
                     strcmp(pattern_card->card_code, "PQ") == 0) {
                     
                     state->total_cards_processed++;
-                    fprintf(ctx->output_fp,
-                        "  DATA CARD No: %3d "
-                        "%s %3d %5d %5d %5d %12.5E %12.5E %12.5E %12.5E %12.5E %12.5E\n",
-                        state->total_cards_processed, pattern_card->card_code,
-                        pattern_card->i[1], pattern_card->i[2], pattern_card->i[3], pattern_card->i[4],
-                        pattern_card->f[1], pattern_card->f[2], pattern_card->f[3], 
-                        pattern_card->f[4], pattern_card->f[5], pattern_card->f[6]);
+                    write_card_echo(ctx->output_fp, ctx, state->total_cards_processed, pattern_card);
                 }
             }
         }
@@ -1396,13 +1397,7 @@ static int process_nh_card(context_t *ctx, deck_t *deck, int card_idx,
                     strcmp(pattern_card->card_code, "PQ") == 0) {
                     
                     state->total_cards_processed++;
-                    fprintf(ctx->output_fp,
-                        "  DATA CARD No: %3d "
-                        "%s %3d %5d %5d %5d %12.5E %12.5E %12.5E %12.5E %12.5E %12.5E\n",
-                        state->total_cards_processed, pattern_card->card_code,
-                        pattern_card->i[1], pattern_card->i[2], pattern_card->i[3], pattern_card->i[4],
-                        pattern_card->f[1], pattern_card->f[2], pattern_card->f[3], 
-                        pattern_card->f[4], pattern_card->f[5], pattern_card->f[6]);
+                    write_card_echo(ctx->output_fp, ctx, state->total_cards_processed, pattern_card);
                 }
             }
         }

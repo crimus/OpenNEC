@@ -2089,6 +2089,9 @@ static int write_segments(context_t *ctx, const deck_t *deck, FILE *file)
   
   /* Print patch data as final part of geometry output block (matching Fortran flow) */
   write_patches(ctx, deck, file);
+
+  if (ctx->output_format == OUTPUT_FORMAT_ORIGINAL)
+    fprintf(ctx->output_fp, "\n\n\n\n\n\n");
   
   return 0;
 } /* write_segments */
