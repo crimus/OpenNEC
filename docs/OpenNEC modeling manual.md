@@ -3,14 +3,16 @@ OpenNEC Modeling Manual
 
 Introduction
 ------------
+
 This manual describes how to build and analyze antenna models with OpenNEC. The manual covers the full input language, geometry, control cards, and output interpretation, and includes practical guidelines for constructing accurate models. Most of the material here applies to any NEC-2 compatable engine, and the manual broadly follows the structure of the NEC-2 User's Manual (Part III).
 
 The manual also covers the modeling-related extensions found in OpenNEC: symbolic formulas, unit suffixes, wire-gauge notation, current source excitation, and additional loading types. The intent is that a user familiar with any NEC-2 simulator should find the card descriptions and modeling rules directly applicable, while OpenNEC-specific additions are clearly marked.
 
-For a description of the OpenNEC program itself, refer to the [OpenNEC programmer manual](OpenNEC programmer manual.md).
+For a description of the OpenNEC program itself, refer to the [OpenNEC programmer manual](OpenNEC%20programmer%20manual.md).
 
-I. Key concepts
----------------
+Key concepts
+------------
+
 ### Why model antennas?
 
 A computer model cannot replace building and measuring an antenna. It can, however, reveal important information that would otherwise be difficult to determine without extensive testing. This includes:
@@ -20,9 +22,9 @@ A computer model cannot replace building and measuring an antenna. It can, howev
 - **Effect of nearby objects:** the ground, a tower, a roof, other antenna elements
 - **Sensitivity analysis:** what happens to performance when element length or spacing changes slightly
 
-Modeling systems answer all of these from a description of the wire geometry and a few material parameters. While the results may not exactly match the performance of the real-world version, the *relative* performance is often very accurate. A typical model takes seconds to compute on modern hardware and can be iterated rapidly, giving the designer important notes on how to tune their real-world design.
+Modeling systems answer all of these from a description of the wire geometry and a few material parameters. While the results may not exactly match the performance of the real-world version, the *relative* performance is often very accurate, which allows you to experiment with changes to the design and get a good idea of what that will do. A typical model takes seconds to compute on modern hardware and can be iterated rapidly, giving the designer rapid feedback on how to tune their real-world design.
 
-A model is only as good as its description. A wire diameter that differs from the real antenna, or an incorrect segment count, can shift results substantially. The modeling guidelines in Section III describe how to choose segment counts and sizes to obtain reliable results.
+A model is only as good as its description. A wire diameter that differs from the real antenna, or an incorrect segment count, can shift results substantially. The modeling guidelines below describe how to choose segment counts and sizes to obtain reliable results.
 
 ### What is NEC?
 
@@ -66,8 +68,8 @@ As this is being written, the current base-model iPhone 17 ships with 8 GB of me
 
 In terms of the simulation loop, the only major difference between OpenNEC and other engines is that step 4 can be skipped if it is being used as an embedded library. Instead, the wrapper program can simply read the resulting numeric data directly, elimintaing the need to parse the output back into numeric format. This can greatly speed the round-trip of sending in a deck, running the simulation, and parsing the output, to the point where OpenNEC can be used real-time on most real-world designs.
 
-II. Units, symbols, and formulas
---------------------------------
+Units, symbols, and formulas
+----------------------------
 
 ### Coordinate system
 
@@ -94,8 +96,9 @@ All numeric parameters in standard NEC-2 are in SI base units:
 | Voltage | Volts (V) |
 | Power | Watts (W) |
 
-III. Structure modeling guidelines
-----------------------------------
+Structure modeling guidelines
+-----------------------------
+
 The basic elements for modeling structures with NEC are short, straight wire *segments* and flat surface *patches*. An antenna, and any nearby conducting object that affects its performance, must be described with segments following its wire paths and patches covering its surfaces. Curved wires and wire arrays are included, which are turned into individual segments during calculation.
 
 Choosing segments and patches correctly is the most important step in producing accurate results. The number of segments should be the minimum necessary for accuracy; computation time increases roughly as the cube of the number of segments, so unnecessary segments cost considerably more than they gain.
@@ -198,7 +201,7 @@ where σ is conductivity (S/m), μ ≈ 4π×10⁻⁷ H/m (non-ferromagnetic wire
 
 ### 3. Modeling structures over ground
 
-Several ground models are available. See [Section III, GN card](#gn--ground-parameters) and [Section III, GD card](#gd--additional-ground-parameters) for full card descriptions, and [Appendix C](#appendix-c-typical-ground-values) for typical earth parameter values.
+Several ground models are available. See [GN card](#gn--ground-parameters) and [GD card](#gd--additional-ground-parameters) for full card descriptions, and [Appendix C](#appendix-c-typical-ground-values) for typical earth parameter values.
 
 #### Perfect ground (GN 1)
 
@@ -227,8 +230,9 @@ When a number of radial wires are specified in the GN card, their effect is appr
 
 A linear or circular cliff can be defined using the GD card, specifying different ground parameters and height on opposite sides. The cliff is applied during far-field computation only; it does not affect the near-field interaction matrix. This option is suitable for coastal or terrain-discontinuity studies.
 
-IV. Program input
------------------
+Program input and file format
+-----------------------------
+
 An NEC input file (deck) consists of cards arranged in three sections:
 
 1. **Comment section:** normally contains at least one or more `CM` ccomment ards and ends at a `CE`. May consist of a single `GE`.
@@ -734,8 +738,8 @@ EN
 
 Marks the end of the deck. Required. Any lines after `EN` are treated as comments.
 
-V. OpenNEC extensions: units, symbols and formulas
---------------------------------------------------
+OpenNEC extensions: units, symbols and formulas
+-----------------------------------------------
 
 ### OpenNEC unit suffixes
 
@@ -806,8 +810,8 @@ Symbols can be defined anywhere in the deck, as long as the definition is before
 
 Generally, it is considered good practice to define the symbols in their own block, between the `CE` and the first geometry card. 
 
-VI. Output
-----------
+Output
+------
 
 OpenNEC writes results to a `.out` file (same name and directory as the input deck). The output is plain text in a format compatible with NEC-2 output.
 
@@ -852,8 +856,8 @@ $$Z_{in} = V/I \quad (\Omega)$$
 
 The program prints the source current under the current table column for the corresponding segment.
 
-VII. Examples
---------------
+Examples
+--------
 
 The following examples are extracted from the many thousands of examples provided by the Cebik collection. They have been selected as representative of the most common antenna designs in the collection, and then modified to use the new features found in OpenNEC.
 
@@ -995,8 +999,8 @@ EN
 
 **Expected output:** Feed-point impedance relatively flat across 130-150 MHz (approximately 50 Ω). Gain around 7-8 dBi. Radiation pattern exhibits moderate directivity with a primary lobe perpendicular to the boom axis. Suitable for satellite communication and weak-signal VHF work.
 
-VIII. Error messages
---------------------
+Error messages
+--------------
 
 OpenNEC reports errors at two stages:
 

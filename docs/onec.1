@@ -152,11 +152,19 @@ The default is
 on Unix and macOS, and
 .B crlf
 on Windows.
+.TP
+.BR \-a ", " \-\-add\-rp
+Automatically add a default RP card if the deck
+ends without any reporting. This is useful for
+running decks from 4nec2 that would otherwise produce no pattern
+output. If the deck already has an RP, this does nothing.
 .PP
 Single-letter flags that take no argument may be combined:
 .B \-nt
+or
+.B \-nta
 is equivalent to
-.BR "\-n \-t" .
+.BR "\-n \-t" " or " "\-n \-t \-a" .
 .SH FILE FORMATS
 .B onec
 recognises the following file formats.
