@@ -1757,7 +1757,7 @@ static int execute_frequency_loop_sequential(context_t *ctx, deck_t *deck,
     geometry_t *geom = &ctx->geometry;
     
     /* Allocate matrix and other structures for frequency loop */
-    if (allocate_frequency_loop_storage(ctx, geom->num_segs + geom->num_patches) != 0) {
+    if (allocate_frequency_loop_storage(ctx, geom->num_segs + 2 * geom->num_patches) != 0) {
         add_error(ctx, &ctx->errors, "Failed to allocate frequency loop storage", FATAL);
         return -1;
     }

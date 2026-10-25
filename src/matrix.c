@@ -28,10 +28,13 @@
 #include "matrix.h"
 #include "fields.h"
 #include "calculations.h"
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 /* Forward declarations for internal functions */
 /* Formerly nec2c: cmss */
-static void fill_patch_patch_matrix(context_t *restrict ctx, int j1, int j2, int im1, int im2, complex double *restrict cm, int nrow, int itrp);
+static void fill_patch_patch_matrix(context_t *restrict ctx, int j1, int j2, int im1, int im2, int pa, int pb, complex double *restrict cm, int nrow, int itrp);
 /* Formerly nec2c: cmsw */
 static void fill_patch_wire_matrix(context_t *restrict ctx, int j1, int j2, int i1, int i2, complex double *restrict cm, complex double *restrict cw, int ncw, int nrow, int itrp);
 /* Formerly nec2c: cmws */
@@ -70,7 +73,7 @@ extern void zgetrs_(char*, int*, int*, double _Complex*, int*, int*, double _Com
 int fill_interaction_matrix(context_t *restrict ctx, int nrow, complex double *restrict cm, double rkhx, int iexkx)
 {
   int mp2, neq, npeq, it, i, j, i1, i2, in2;
-  int im1, im2, ist, ij, ipr, jss, jm1, jm2, jst, k, ka, kk;
+  int im1, im2, ist, ij, ipr, jss, k, ka, kk;
   complex double zaj, deter, *scm = NULL;
 
   mp2 = 2 * ctx->geometry.num_patches_sym;
@@ -103,72 +106,277 @@ int fill_interaction_matrix(context_t *restrict ctx, int nrow, complex double *r
   if( i1 <= ctx->geometry.num_segs_sym)
 	ist= ctx->geometry.num_segs_sym- i1+2;
 
-  /* wire source loop */
-  if( ctx->geometry.num_segs != 0)
+  /* Parallel over OBSERVER chunks (matrix columns), not over sources.
+   * In the transposed fill (itrp=1) every observer writes only its own
+   * column of cm, so threads never write the same element, and a single
+   * parallel region replaces one fork/join + barrier per source.
+   * The field routines return results through scratch blocks in the
+   * context, so each thread works on a private copy whose segj buffers are
+   * private too (trio may realloc them). The wire-observer chunk loop does
+   * wire sources and patch sources for the same columns in the same thread
+   * (both may touch the junction elements of those columns). */
+  int nthreads = 1;
+#ifdef _OPENMP
+  nthreads = omp_get_max_threads();
+#endif
+  int nsegs = ctx->geometry.num_segs;
+  int npatches = ctx->geometry.num_patches;
+
+  int nwire_obs = (i1 <= in2) ? in2 - i1 + 1 : 0;
+  int wchunk = (nwire_obs + 4*nthreads - 1) / (4*nthreads);
+  if( wchunk < 8 ) wchunk = 8;
+  int nwchunks = (nwire_obs > 0) ? (nwire_obs + wchunk - 1) / wchunk : 0;
+
+  /* Patch observers come in (odd, even) pairs sharing one field
+   * evaluation, so chunks must start on an odd index (or at im1). */
+  int npatch_obs = (im1 <= im2) ? im2 - im1 + 1 : 0;
+  int pchunk = (npatch_obs + 4*nthreads - 1) / (4*nthreads);
+  pchunk = (pchunk + 1) & ~1;
+  if( pchunk < 8 ) pchunk = 8;
+  int pshift = (im1 % 2 == 0) ? 1 : 0;
+  int npchunks = (npatch_obs > 0) ? (npatch_obs + pshift + pchunk - 1) / pchunk : 0;
+
+  /* jsnox of fill_patch_wire_matrix derives from the segj state left by the
+   * last wire source of the serial algorithm, so reproduce that state. */
+  int ref_jsno = ctx->segj.num_junction_segs;
+  if( nsegs != 0 && npatches != 0 )
   {
-	for( j = 1; j <= ctx->geometry.num_segs; j++ )
+	if (compute_all_basis_funcs_on_seg(ctx, nsegs) != 0)
+	  return -1;
+	ref_jsno = ctx->segj.num_junction_segs;
+  }
+
+  int fill_err = 0;
+
+  /* Basis-function data depends only on the source segment, so evaluate it
+   * once (in parallel over sources) instead of once per observer chunk. */
+  typedef struct { int n; int *js; double *a, *b, *c; } src_basis_t;
+  src_basis_t *stab = NULL;
+  if( nsegs != 0 )
+  {
+	stab = calloc((size_t)nsegs, sizeof(src_basis_t));
+	if( stab == NULL )
+	  return -1;
+
+#ifdef _OPENMP
+	#pragma omp parallel default(shared)
+#endif
 	{
-	  if (compute_all_basis_funcs_on_seg(ctx, j) != 0)
-	    return -1;
-	  
-	  for( i = 0; i < ctx->segj.num_junction_segs; i++ )
+	  context_t bctx = *ctx;
+	  bctx.segj.junction_segs = NULL;
+	  bctx.segj.coeff_const = bctx.segj.coeff_sine = bctx.segj.coeff_cos = NULL;
+	  bctx.segj.max_connections = 0;
+	  bctx.segj.num_junction_segs = 0;
+
+#ifdef _OPENMP
+	  #pragma omp for schedule(static)
+#endif
+	  for( int js = 1; js <= nsegs; js++ )
 	  {
-		ij = ctx->segj.junction_segs[i];
-		ctx->segj.junction_segs[i] = (( ij - 1 ) / ctx->geometry.num_segs_sym) * mp2 + ij;
+		if( compute_all_basis_funcs_on_seg(&bctx, js) != 0 )
+		{
+#ifdef _OPENMP
+		  #pragma omp atomic write
+#endif
+		  fill_err = 1;
+		  continue;
+		}
+
+		int n = bctx.segj.num_junction_segs;
+		src_basis_t *t = &stab[js-1];
+		t->n = n;
+		t->js = malloc((size_t)n * sizeof(int));
+		t->a = malloc((size_t)n * sizeof(double));
+		t->b = malloc((size_t)n * sizeof(double));
+		t->c = malloc((size_t)n * sizeof(double));
+		if( !t->js || !t->a || !t->b || !t->c )
+		{
+#ifdef _OPENMP
+		  #pragma omp atomic write
+#endif
+		  fill_err = 1;
+		  continue;
+		}
+
+		for( int q = 0; q < n; q++ )
+		{
+		  int ijq = bctx.segj.junction_segs[q];
+		  t->js[q] = (( ijq - 1 ) / bctx.geometry.num_segs_sym) * mp2 + ijq;
+		  t->a[q] = bctx.segj.coeff_const[q];
+		  t->b[q] = bctx.segj.coeff_sine[q];
+		  t->c[q] = bctx.segj.coeff_cos[q];
+		}
 	  }
 
-	  if( i1 <= in2)
+	  mem_free(&bctx, (void *)&bctx.segj.junction_segs);
+	  mem_free(&bctx, (void *)&bctx.segj.coeff_const);
+	  mem_free(&bctx, (void *)&bctx.segj.coeff_sine);
+	  mem_free(&bctx, (void *)&bctx.segj.coeff_cos);
+	}
+
+	if( fill_err )
+	{
+	  for( int q = 0; q < nsegs; q++ )
+	  { free(stab[q].js); free(stab[q].a); free(stab[q].b); free(stab[q].c); }
+	  free(stab);
+	  return -1;
+	}
+  }
+
+#ifdef _OPENMP
+  #pragma omp parallel default(shared)
+#endif
+  {
+	context_t tctx = *ctx;
+	tctx.segj.junction_segs = NULL;
+	tctx.segj.coeff_const = tctx.segj.coeff_sine = tctx.segj.coeff_cos = NULL;
+	tctx.segj.max_connections = 0;
+	tctx.segj.num_junction_segs = 0;
+
+	if( nsegs != 0 && npatches != 0 && ctx->segj.max_connections > 0 && ctx->segj.junction_segs != NULL )
+	{
+	  size_t nc = (size_t)ctx->segj.max_connections;
+	  if( mem_alloc(&tctx, (void *)&tctx.segj.junction_segs, nc * sizeof(int)) == 0 &&
+		  mem_alloc(&tctx, (void *)&tctx.segj.coeff_const, nc * sizeof(double)) == 0 &&
+		  mem_alloc(&tctx, (void *)&tctx.segj.coeff_sine, nc * sizeof(double)) == 0 &&
+		  mem_alloc(&tctx, (void *)&tctx.segj.coeff_cos, nc * sizeof(double)) == 0 )
 	  {
-		fill_wire_wire_matrix(ctx, j, i1, in2, cm, nrow, cm, nrow, 1);
+		memcpy(tctx.segj.junction_segs, ctx->segj.junction_segs, nc * sizeof(int));
+		memcpy(tctx.segj.coeff_const, ctx->segj.coeff_const, nc * sizeof(double));
+		memcpy(tctx.segj.coeff_sine, ctx->segj.coeff_sine, nc * sizeof(double));
+		memcpy(tctx.segj.coeff_cos, ctx->segj.coeff_cos, nc * sizeof(double));
+		tctx.segj.max_connections = ctx->segj.max_connections;
+	  }
+	  else
+	  {
+#ifdef _OPENMP
+		#pragma omp atomic write
+#endif
+		fill_err = 1;
+	  }
+	}
+
+	/* observers on wires: wire sources, then patch sources */
+#ifdef _OPENMP
+	#pragma omp for schedule(dynamic, 1)
+#endif
+	for( int c = 0; c < nwchunks; c++ )
+	{
+	  int ia = i1 + c * wchunk;
+	  int ib = ia + wchunk - 1;
+	  if( ib > in2 ) ib = in2;
+
+	  for( int js = 1; js <= nsegs; js++ )
+	  {
+		segment_junction_t saved = tctx.segj;
+		tctx.segj.junction_segs = stab[js-1].js;
+		tctx.segj.coeff_const = stab[js-1].a;
+		tctx.segj.coeff_sine = stab[js-1].b;
+		tctx.segj.coeff_cos = stab[js-1].c;
+		tctx.segj.num_junction_segs = stab[js-1].n;
+
+		fill_wire_wire_matrix(&tctx, js, ia, ib, &cm[(ia - i1) * nrow], nrow, cm, nrow, 1);
+		tctx.segj = saved;
 	  }
 
-	  if( im1 <= im2)
-		fill_wire_patch_matrix(ctx, j, im1, im2, &cm[(ist - 1) * nrow], nrow, cm, 1);
+	  if( npatches != 0 )
+	  {
+		int sjm1 = 1 - ctx->geometry.num_patches_sym;
+		int sjm2 = 0;
+		int sjst = 1 - mp2;
 
-	  /* matrix elements modified by loading */
-	  if( ctx->zload.num_loads == 0)
-		continue;
+		for( int sec = 0; sec < ctx->smat.num_sections; sec++ )
+		{
+		  sjm1 += ctx->geometry.num_patches_sym;
+		  sjm2 += ctx->geometry.num_patches_sym;
+		  sjst += npeq;
 
-	  if( j > ctx->geometry.num_segs_sym)
-		continue;
+		  tctx.segj.num_junction_segs = ref_jsno;
+		  fill_patch_wire_matrix(&tctx, sjm1, sjm2, ia, ib,
+			  &cm[(sjst - 1) + (ia - i1) * nrow], &cm[(ia - i1) * nrow], 0, nrow, 1);
+		}
+	  }
+	}
 
+	/* observers on patches: wire sources, then patch sources */
+#ifdef _OPENMP
+	#pragma omp for schedule(dynamic, 1)
+#endif
+	for( int c = 0; c < npchunks; c++ )
+	{
+	  int ia = (c == 0) ? im1 : im1 + c * pchunk - pshift;
+	  int ib = im1 + (c + 1) * pchunk - pshift - 1;
+	  if( ib > im2 ) ib = im2;
+
+	  for( int js = 1; js <= nsegs; js++ )
+	  {
+		segment_junction_t saved = tctx.segj;
+		tctx.segj.junction_segs = stab[js-1].js;
+		tctx.segj.coeff_const = stab[js-1].a;
+		tctx.segj.coeff_sine = stab[js-1].b;
+		tctx.segj.coeff_cos = stab[js-1].c;
+		tctx.segj.num_junction_segs = stab[js-1].n;
+
+		fill_wire_patch_matrix(&tctx, js, ia, ib, &cm[(ist - 1 + (ia - im1)) * nrow], nrow, cm, 1);
+		tctx.segj = saved;
+	  }
+
+	  if( npatches != 0 )
+	  {
+		int sjm1 = 1 - ctx->geometry.num_patches_sym;
+		int sjm2 = 0;
+		int sjst = 1 - mp2;
+
+		for( int sec = 0; sec < ctx->smat.num_sections; sec++ )
+		{
+		  sjm1 += ctx->geometry.num_patches_sym;
+		  sjm2 += ctx->geometry.num_patches_sym;
+		  sjst += npeq;
+
+		  fill_patch_patch_matrix(&tctx, sjm1, sjm2, im1, im2, (ia + 1)/2, (ib + 1)/2,
+			  &cm[(sjst - 1) + (ist - 1) * nrow], nrow, 1);
+		}
+	  }
+	}
+
+	mem_free(&tctx, (void *)&tctx.segj.junction_segs);
+	mem_free(&tctx, (void *)&tctx.segj.coeff_const);
+	mem_free(&tctx, (void *)&tctx.segj.coeff_sine);
+	mem_free(&tctx, (void *)&tctx.segj.coeff_cos);
+  } /* omp parallel */
+
+  if( stab != NULL )
+  {
+	for( int q = 0; q < nsegs; q++ )
+	{ free(stab[q].js); free(stab[q].a); free(stab[q].b); free(stab[q].c); }
+	free(stab);
+  }
+
+  if( fill_err )
+	return -1;
+
+  /* matrix elements modified by loading (touch column j, so done serially) */
+  if( nsegs != 0 && ctx->zload.num_loads != 0 )
+  {
+	for( j = 1; j <= ctx->geometry.num_segs_sym; j++ )
+	{
 	  ipr = j;
 	  if( (ipr < 1) || (ipr > it) )
 		continue;
+
+	  if (compute_all_basis_funcs_on_seg(ctx, j) != 0)
+		return -1;
 
 	  zaj = ctx->zload.seg_impedance[j-1];
 
 	  for( i = 0; i < ctx->segj.num_junction_segs; i++ )
 	  {
-		jss = ctx->segj.junction_segs[i];
+		ij = ctx->segj.junction_segs[i];
+		jss = (( ij - 1 ) / ctx->geometry.num_segs_sym) * mp2 + ij;
 		cm[(jss - 1) + (ipr - 1) * nrow] -= ( ctx->segj.coeff_const[i] + ctx->segj.coeff_cos[i] ) * zaj;
 	  }
-
-	} /* for( j = 1; j <= n; j++ ) */
-
-  } /* if( n != 0) */
-
-  if( ctx->geometry.num_patches != 0)
-  {
-	/* matrix elements for patch current sources */
-	jm1 = 1 - ctx->geometry.num_patches_sym;
-	jm2 = 0;
-	jst = 1 - mp2;
-
-	for( i = 0; i < ctx->smat.num_sections; i++ )
-	{
-	  jm1 += ctx->geometry.num_patches_sym;
-	  jm2 += ctx->geometry.num_patches_sym;
-	  jst += npeq;
-
-	  if( i1 <= in2)
-		fill_patch_wire_matrix(ctx, jm1, jm2, i1, in2, &cm[(jst - 1)], cm, 0, nrow, 1);
-
-	  if( im1 <= im2)
-		fill_patch_patch_matrix(ctx, jm1, jm2, im1, im2, &cm[(jst - 1) + (ist - 1) * nrow], nrow, 1);
 	}
-
-  } /* if( m != 0) */
+  }
 
   if( ctx->matpar.storage_case == 1)
 	return 0;
@@ -222,27 +430,25 @@ int fill_interaction_matrix(context_t *restrict ctx, int nrow, complex double *r
 
 /* cmss computes matrix elements for surface-surface interactions. */
 /* Formerly nec2c: cmss */
-void fill_patch_patch_matrix(context_t *restrict ctx, int j1, int j2, int im1, int im2,
+void fill_patch_patch_matrix(context_t *restrict ctx, int j1, int j2, int im1, int im2, int pa, int pb,
     complex double *restrict cm, int nrow, int itrp )
 {
-  int i1, i2, icomp, ii1, i, il, ii2, jj1, j, jl, /*jl2,*/ jj2;
+  int i1, ibase, icomp, ii1, i, il, ii2, jj1, j, jl, jj2;
   double t1xi, t1yi, t1zi, t2xi, t2yi, t2zi, xi, yi, zi;
   complex double g11, g12, g21, g22;
 
+  /* Observer patches pa..pb (a sub-range of (im1+1)/2..(im2+1)/2) are
+   * processed; indices are derived in closed form so any sub-range can be
+   * filled independently (and thus in parallel). */
   i1=( im1+1)/2;
-  i2=( im2+1)/2;
-  icomp= i1*2-3;
-  ii1=-2;
-  if( icomp+2 < im1)
-	ii1=-3;
+  ibase = ( 2*i1-1 < im1 ) ? -1 : 0;
 
   /* loop over observation patches */
-  il = -1;
-  for( i = i1; i <= i2; i++ )
+  for( i = pa; i <= pb; i++ )
   {
-	il++;
-	icomp += 2;
-	ii1 += 2;
+	il = i - i1;
+	icomp = 2*i - 1;
+	ii1 = 2*il + ibase;
 	ii2 = ii1+1;
 
 	t1xi = ctx->geometry.patch_t1x[il] * ctx->geometry.patch_normal_z[il];
@@ -701,73 +907,8 @@ void fill_wire_wire_matrix(context_t *restrict ctx, int j, int i1, int i2, compl
 
   } /* if( dataj.use_extended_kernel != 0) */
 
-  /* observation loop.
-   *
-   * Parallelized over observers (OpenMP): each iteration writes a distinct
-   * row (normal fill) or column (transposed fills) of cm/cw, so the writes
-   * are disjoint. e_field_segment returns its result THROUGH the context's
-   * scratch blocks (dataj/incom/tmi/tmh/intrp — the "formerly static
-   * globals"), so each thread works on a private 16 KB struct copy of the
-   * context; the geometry/ground-grid POINTERS inside the copy alias the
-   * shared arrays, which this loop only reads. segj (the source segment's
-   * junction basis data, including the aliased junction_segs pointer) is
-   * set up before this loop and is read-only inside it. */
-#ifdef _OPENMP
-  #pragma omp parallel default(shared)
-  {
-	context_t tctx = *ctx;
-	#pragma omp for schedule(static)
-	for( i = i1-1; i < i2; i++ )
-	{
-	  int ipr_p = i - (i1-1);
-	  int ij_p = i - j;
-	  double xi_p = tctx.geometry.x_center[i];
-	  double yi_p = tctx.geometry.y_center[i];
-	  double zi_p = tctx.geometry.z_center[i];
-	  double ai_p = tctx.geometry.radius[i];
-	  double cabi_p = tctx.geometry.dir_cos_x[i];
-	  double sabi_p = tctx.geometry.dir_cos_y[i];
-	  double salpi_p = tctx.geometry.dir_cos_z[i];
-
-	  e_field_segment( &tctx, xi_p, yi_p, zi_p, ai_p, ij_p);
-
-	  complex double etk_p = tctx.dataj.e_const_x* cabi_p+ tctx.dataj.e_const_y* sabi_p+ tctx.dataj.e_const_z* salpi_p;
-	  complex double ets_p = tctx.dataj.e_sin_x* cabi_p+ tctx.dataj.e_sin_y* sabi_p+ tctx.dataj.e_sin_z* salpi_p;
-	  complex double etc_p = tctx.dataj.e_cos_x* cabi_p+ tctx.dataj.e_cos_y* sabi_p+ tctx.dataj.e_cos_z* salpi_p;
-
-	  if( itrp == 0)
-	  {
-		for( int ijj = 0; ijj < tctx.segj.num_junction_segs; ijj++ )
-		{
-		  int jxx = tctx.segj.junction_segs[ijj]-1;
-		  cm[ipr_p+jxx*nr] += etk_p* tctx.segj.coeff_const[ijj]+ ets_p* tctx.segj.coeff_sine[ijj]+ etc_p* tctx.segj.coeff_cos[ijj];
-		}
-	  }
-	  else if( itrp != 2)
-	  {
-		for( int ijj = 0; ijj < tctx.segj.num_junction_segs; ijj++ )
-		{
-		  int jxx = tctx.segj.junction_segs[ijj]-1;
-		  cm[jxx+ipr_p*nr] += etk_p* tctx.segj.coeff_const[ijj]+ ets_p* tctx.segj.coeff_sine[ijj]+ etc_p* tctx.segj.coeff_cos[ijj];
-		}
-	  }
-	  else
-	  {
-		for( int ijj = 0; ijj < tctx.segj.num_junction_segs; ijj++ )
-		{
-		  int jxx = tctx.segj.junction_segs[ijj]-1;
-		  if( jxx < nr)
-			cm[jxx+ipr_p*nr] += etk_p* tctx.segj.coeff_const[ijj]+ ets_p* tctx.segj.coeff_sine[ijj]+ etc_p* tctx.segj.coeff_cos[ijj];
-		  else
-		  {
-			jxx -= nr;
-			cw[jxx*ipr_p*nw] += etk_p* tctx.segj.coeff_const[ijj]+ ets_p* tctx.segj.coeff_sine[ijj]+ etc_p* tctx.segj.coeff_cos[ijj];
-		  }
-		}
-	  }
-	} /* omp for */
-  } /* omp parallel */
-#else
+  /* observation loop (serial: parallelism is applied by the caller over
+   * observer chunks, see fill_interaction_matrix) */
   ipr=-1;
   for( i = i1-1; i < i2; i++ )
   {
@@ -827,7 +968,6 @@ void fill_wire_wire_matrix(context_t *restrict ctx, int j, int i1, int i2, compl
 	} /* for( ij = 0; ij < segj.num_junction_segs; ij++ ) */
 
   } /* for( i = i1-1; i < i2; i++ ) */
-#endif
 
   return;
 }

@@ -9,9 +9,6 @@
  *******************************************************************/
 
 #include <assert.h>
-#if defined(__SSE2__)
-#include <emmintrin.h>
-#endif
 #include "internals.h"
 #include "calculations.h"
 #include "geometry.h"
@@ -493,13 +490,8 @@ int apply_impedance_loading(context_t *ctx, int *ldtyp, int *ldtag, int *ldtagf,
           double r    = ctx->geometry.radius[i] * ctx->geometry.wavelength; /* wire radius, metres */
           double ratio = R / r;
           double L_pm = 2.0e-7 * pow(eps * ratio, 1.0/12.0) * (1.0 - 1.0/eps) * log(ratio);
-          
-          // NOTE: earlier versions used this:
-          // zt = tpcj * ctx->geometry.half_len[i] * L_pm / ctx->geometry.wavelength;
-          // ... which was scaling L_pm by (half_len / wavelength).
-          // in retrospect where this came from is a mystery and removing it produces
-          // expected results. See issue #24 in GitHub.
-          zt = tpcj * L_pm;
+          /* series distributed impedance per half-length: jω·L_pm·(2·half_len) / (2·half_len) = jω·L_pm */
+          zt = tpcj * ctx->geometry.half_len[i] * L_pm / ctx->geometry.wavelength;
           break;
         }
 
@@ -591,7 +583,7 @@ int apply_impedance_loading(context_t *ctx, int *ldtyp, int *ldtag, int *ldtagf,
 void wire_e_integrand(context_t *ctx, double zk, double *co, double *si )
 {
   double zdk, rk, rks;
-  
+
   zdk= zk- ctx->tmi.seg_center_z;
   rk= sqrt( ctx->tmi.k_radius_sq+ zdk* zdk);
   *si= sin( rk)/ rk;
@@ -626,21 +618,6 @@ double db10(const context_t *ctx, double x )
 }
 
 /*-----------------------------------------------------------------------*/
-
-#if defined(__SSE2__)
-static inline double simd_abs_max2(double a, double b)
-{
-  const __m128d v = _mm_set_pd(fabs(b), fabs(a));
-  double out[2];
-  _mm_storeu_pd(out, v);
-  return fmax(out[0], out[1]);
-}
-#else
-static inline double simd_abs_max2(double a, double b)
-{
-  return fmax(fabs(a), fabs(b));
-}
-#endif
 
 /* function db20 returns db for mag**2 (power) i */
 double db20(const context_t *ctx, double x )
@@ -853,6 +830,10 @@ void romberg_integrate_wire_e(context_t *ctx, double el1, double el2, double b,
   *sgi=0.;
   ns= nx;
   nt=0;
+//   printf("a_romberg=%.16f\n", z);
+//   printf("a_romberg-ctx->tmi.seg_center_z=%.16f\n", z-ctx->tmi.seg_center_z);
+//   printf("b_romberg=%.16f\n", ze);
+//   printf("b_romberg-ctx->tmi.seg_center_z=%.16f\n", ze-ctx->tmi.seg_center_z);
   wire_e_integrand(ctx,  z, &g1r, &g1i);
 
   /* Safety cap: the Romberg loop halves dz up to nma times then advances z;
@@ -950,9 +931,10 @@ void romberg_integrate_wire_e(context_t *ctx, double el1, double el2, double b,
     if( (te2i > rx) || (te2r > rx) )
     {
       nt=0;
-      if( ns >= nma)
+      if( ns >= nma) {
         report(ctx, ONEC_SEV_WARNING, "Step size limited at Z= %10.5f", z);
-      else
+        // printf("Step size limited at Z= %10.5f", z);
+    } else
       {
         /* halve step size */
         ns= ns*2;
@@ -979,6 +961,7 @@ void romberg_integrate_wire_e(context_t *ctx, double el1, double el2, double b,
     {
       report(ctx, ONEC_SEV_WARNING,
         "intx: integration did not converge (degenerate geometry?); results may be inaccurate");
+        printf("intx: integration did not converge (degenerate geometry?); results may be inaccurate");
       return;
     }
     if( z >= zend)
@@ -1027,8 +1010,8 @@ void test_romberg_convergence(context_t *ctx, double f1r, double f2r, double *tr
 {
   double den;
   
-  den = simd_abs_max2(f2r, f2i);
-  *tr = fabs(f2i);
+  den= fabs( f2r);
+  *tr= fabs( f2i);
   
   if( den < *tr)
     den= *tr;
@@ -1277,6 +1260,21 @@ int basis_func_component(context_t *ctx, int i, int is, double *aa, double *bb, 
 
 /*-----------------------------------------------------------------------*/
 
+/* Grow the junction buffers so that at least n entries fit. */
+static int ensure_junction_capacity(context_t *ctx, int n)
+{
+  if( n <= ctx->segj.max_connections )
+    return 0;
+
+  size_t mreq = (size_t)n;
+  if( mem_realloc(ctx, (void *)&ctx->segj.junction_segs, mreq * sizeof(int)) != 0 ) return -1;
+  if( mem_realloc(ctx, (void *)&ctx->segj.coeff_const, mreq * sizeof(double)) != 0 ) return -1;
+  if( mem_realloc(ctx, (void *)&ctx->segj.coeff_sine, mreq * sizeof(double)) != 0 ) return -1;
+  if( mem_realloc(ctx, (void *)&ctx->segj.coeff_cos, mreq * sizeof(double)) != 0 ) return -1;
+  ctx->segj.max_connections = n;
+  return 0;
+}
+
 /* compute basis function i */
 /* Formerly nec2c: tbf */
 int compute_basis_func(context_t *ctx, int i, int icap )
@@ -1309,6 +1307,9 @@ int compute_basis_func(context_t *ctx, int i, int icap )
       jcoxx = jcox-1;
       ctx->segj.num_junction_segs++;
       jsnox = ctx->segj.num_junction_segs-1;
+      /* +1: the segment's own entry is appended after the loop */
+      if( ensure_junction_capacity(ctx, ctx->segj.num_junction_segs + 1) != 0 )
+        return -1;
       ctx->segj.junction_segs[jsnox]= jcox;
       d= PI* ctx->geometry.half_len[jcoxx];
       sdh= sin( d);
