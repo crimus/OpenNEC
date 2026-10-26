@@ -2089,6 +2089,10 @@ static int write_segments(context_t *ctx, const deck_t *deck, FILE *file)
   
   /* Print patch data as final part of geometry output block (matching Fortran flow) */
   write_patches(ctx, deck, file);
+
+  if (ctx->output_format == OUTPUT_FORMAT_ORIGINAL)
+    // fprintf(ctx->output_fp, "\n\n\n\n\n\n"); // to match nec2/mp output
+    fprintf(ctx->output_fp, "\n"); // one is sufficient for correct 4nec2 loading .out
   
   return 0;
 } /* write_segments */
